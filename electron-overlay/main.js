@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -28,7 +28,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false
+      enableRemoteModule: false,
+      preload: path.join(__dirname, 'preload.js')
     },
     backgroundColor: '#00000000'  // Fully transparent background
   });
@@ -42,6 +43,14 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// IPC handler for setting mouse event forwarding
+ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    window.setIgnoreMouseEvents(ignore, options);
+  }
+});
 
 app.whenReady().then(createWindow);
 

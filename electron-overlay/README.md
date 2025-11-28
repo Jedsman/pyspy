@@ -7,6 +7,8 @@ A true transparent overlay viewer for Voice-to-Code with **opaque text on transp
 ✅ **True Per-Element Transparency** - Text is fully opaque, only background is transparent
 ✅ **Adjustable Background Opacity** - Slider controls background transparency (0-90%)
 ✅ **Always On Top** - Floats over all windows
+✅ **Click-Through Code Display** - Code area is transparent to mouse input, allowing interaction with apps underneath
+✅ **Interactive Controls** - Title bar, controls, and tabs remain fully interactive
 ✅ **Real-time Updates** - WebSocket connection to web server
 ✅ **Full Syntax Highlighting** - Prism.js for all languages
 ✅ **Modern UI** - Blur effects and smooth controls
@@ -60,13 +62,21 @@ A true transparent overlay viewer for Voice-to-Code with **opaque text on transp
 
 ## How It Works
 
-The overlay uses Electron's `transparent: true` window option combined with CSS:
+The overlay uses Electron's `transparent: true` window option combined with CSS and dynamic click-through:
+
+**Visual Transparency:**
 - `body { background: transparent }` - Fully transparent body
 - `.header { background: rgba(10, 10, 10, 0.3) }` - Semi-transparent backgrounds
 - `backdrop-filter: blur(10px)` - Modern blur effect (like macOS)
 - Text remains fully opaque with `color: #ffffff`
+- The slider adjusts only the `rgba()` alpha value of backgrounds, not the text
 
-The slider adjusts only the `rgba()` alpha value of backgrounds, not the text.
+**Click-Through Functionality:**
+- Uses Electron's `setIgnoreMouseEvents(true, { forward: true })` API
+- JavaScript tracks mouse position in real-time
+- When mouse is over code display area, window becomes click-through
+- When mouse is over title bar, controls, or tabs, window captures mouse events
+- Allows viewing code while interacting with applications underneath
 
 ## Comparison with Tkinter Viewer
 
@@ -74,6 +84,7 @@ The slider adjusts only the `rgba()` alpha value of backgrounds, not the text.
 |---------|---------|----------|
 | Background transparency | Window-level only | Per-element ✓ |
 | Text opacity | Fades with window | Always opaque ✓ |
+| Click-through code area | No | Yes ✓ |
 | Syntax highlighting | Basic Python | Full Prism.js ✓ |
 | Dependencies | None (built-in) | Node.js + Electron |
 | Size | ~300 lines Python | ~200 lines JS/HTML |

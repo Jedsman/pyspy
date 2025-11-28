@@ -409,6 +409,49 @@
 
         let syncMode = false;
 
+        // Click-through functionality: Track mouse position
+        // When mouse is over interactive elements (titlebar, header, tabs), allow interaction
+        // When mouse is over code display area, enable click-through
+        const interactiveElements = [
+            document.querySelector('.titlebar'),
+            document.querySelector('.header'),
+            document.querySelector('.tab-container'),
+            document.querySelector('.resize-handle')
+        ];
+
+        // Track if we're currently over an interactive element
+        let isOverInteractive = false;
+
+        // Mouse move handler to toggle click-through
+        document.addEventListener('mousemove', (e) => {
+            // Check if mouse is over any interactive element
+            const overInteractive = interactiveElements.some(el => {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                return (
+                    e.clientX >= rect.left &&
+                    e.clientX <= rect.right &&
+                    e.clientY >= rect.top &&
+                    e.clientY <= rect.bottom
+                );
+            });
+
+            // Only update if state changed (to reduce IPC calls)
+            if (overInteractive !== isOverInteractive) {
+                isOverInteractive = overInteractive;
+
+                if (window.electron && window.electron.setIgnoreMouseEvents) {
+                    if (isOverInteractive) {
+                        // Over interactive elements: disable click-through
+                        window.electron.setIgnoreMouseEvents(false);
+                    } else {
+                        // Over code display: enable click-through with forward option
+                        window.electron.setIgnoreMouseEvents(true, { forward: true });
+                    }
+                }
+            }
+        });
+
         // Update background opacity
         function updateBackgroundOpacity(value) {
             bgOpacityValue.textContent = value + '%';
