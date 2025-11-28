@@ -52,6 +52,17 @@ ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
   }
 });
 
+// IPC handler for window resizing
+ipcMain.on('resize-window', (event, deltaX, deltaY) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    const [currentWidth, currentHeight] = window.getSize();
+    const newWidth = Math.max(400, currentWidth + deltaX);
+    const newHeight = Math.max(300, currentHeight + deltaY);
+    window.setSize(newWidth, newHeight);
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

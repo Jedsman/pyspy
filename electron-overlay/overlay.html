@@ -314,16 +314,22 @@
             position: absolute;
             bottom: 0;
             right: 0;
-            width: 20px;
-            height: 20px;
+            width: 50px;
+            height: 50px;
             cursor: nwse-resize;
             -webkit-app-region: no-drag;
-            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.3) 50%);
+            background: linear-gradient(135deg, transparent 55%, rgba(255, 255, 255, 0.4) 55%);
             border-bottom-right-radius: 8px;
+            z-index: 1000;
+            transition: background 0.2s;
         }
 
         .resize-handle:hover {
-            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.5) 50%);
+            background: linear-gradient(135deg, transparent 55%, rgba(76, 175, 80, 0.6) 55%);
+        }
+
+        .resize-handle:active {
+            background: linear-gradient(135deg, transparent 55%, rgba(76, 175, 80, 0.8) 55%);
         }
     </style>
 </head>
@@ -369,7 +375,7 @@
                 <div class="empty-state">Waiting for files...</div>
             </div>
         </div>
-        <div class="resize-handle"></div>
+        <div class="resize-handle" id="resizeHandle"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
@@ -422,10 +428,24 @@
         // Track if we're currently over an interactive element
         let isOverInteractive = false;
 
+        // Edge padding for window resizing (pixels from edge)
+        // We make a generous padding area near edges non-click-through
+        // This allows users to grab edges for resizing
+        const EDGE_PADDING = 30;
+
         // Mouse move handler to toggle click-through
         document.addEventListener('mousemove', (e) => {
+            // Check if mouse is near window edges (for resizing)
+            // Near edges should NOT be click-through to allow window resizing
+            const nearEdge = (
+                e.clientX <= EDGE_PADDING || // Left edge
+                e.clientX >= window.innerWidth - EDGE_PADDING || // Right edge
+                e.clientY <= EDGE_PADDING || // Top edge
+                e.clientY >= window.innerHeight - EDGE_PADDING // Bottom edge
+            );
+
             // Check if mouse is over any interactive element
-            const overInteractive = interactiveElements.some(el => {
+            const overInteractive = nearEdge || interactiveElements.some(el => {
                 if (!el) return false;
                 const rect = el.getBoundingClientRect();
                 return (
@@ -450,6 +470,36 @@
                     }
                 }
             }
+        });
+
+        // Resize handle drag logic
+        const resizeHandle = document.getElementById('resizeHandle');
+        let isResizing = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            lastMouseX = e.screenX;
+            lastMouseY = e.screenY;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizing && window.electron && window.electron.resizeWindow) {
+                const deltaX = e.screenX - lastMouseX;
+                const deltaY = e.screenY - lastMouseY;
+
+                if (deltaX !== 0 || deltaY !== 0) {
+                    window.electron.resizeWindow(deltaX, deltaY);
+                    lastMouseX = e.screenX;
+                    lastMouseY = e.screenY;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
         });
 
         // Update background opacity
