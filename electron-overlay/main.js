@@ -1,0 +1,58 @@
+const { app, BrowserWindow, screen } = require('electron');
+const path = require('path');
+
+let mainWindow;
+
+function createWindow() {
+  // Get primary display dimensions
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  // Window dimensions
+  const windowWidth = 800;
+  const windowHeight = 600;
+  const x = screenWidth - windowWidth - 20;
+  const y = 20;
+
+  mainWindow = new BrowserWindow({
+    width: windowWidth,
+    height: windowHeight,
+    x: x,
+    y: y,
+    transparent: true,  // Enable transparency
+    frame: false,       // Frameless for true transparency on Windows
+    alwaysOnTop: true,  // Always on top
+    resizable: true,    // Allow window resizing
+    minWidth: 400,      // Minimum width
+    minHeight: 300,     // Minimum height
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false
+    },
+    backgroundColor: '#00000000'  // Fully transparent background
+  });
+
+  mainWindow.loadFile('overlay.html');
+
+  // Optional: Open DevTools for debugging
+  // mainWindow.webContents.openDevTools();
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});

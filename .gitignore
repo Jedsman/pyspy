@@ -1,0 +1,151 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ===========================
+# Virtual Environments
+# ===========================
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# ===========================
+# Environment Variables (CRITICAL - Contains API Keys!)
+# ===========================
+.env
+.env.local
+.env.*.local
+
+# ===========================
+# IDE / Editor
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# ===========================
+# Logs and Session Files
+# ===========================
+logs/
+*.log
+session.log
+session_*.log
+
+# ===========================
+# Generated Code and Temp Files
+# ===========================
+generated_code/
+temp_audio/
+.command
+
+# ===========================
+# Node.js (Electron Overlay)
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Electron build output
+electron-overlay/dist/
+electron-overlay/out/
+electron-overlay/build/
+
+# ===========================
+# Operating System
+# ===========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Windows reserved device names
+nul
+NUL
+CON
+PRN
+AUX
+COM*
+LPT*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ===========================
+# Project Specific
+# ===========================
+# Old/backup files
+old/
+backup/
+*.bak
+*.old
+
+# Whisper model cache (optional - uncomment if you want to cache models)
+# .cache/whisper/
+
+# System prompts backup (if you have backups)
+prompts/*.bak
+prompts/*~

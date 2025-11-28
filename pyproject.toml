@@ -1,0 +1,73 @@
+[project]
+name = "voice-to-code"
+version = "1.0.0"
+description = "Real-time voice-to-code system for pair programming"
+readme = "README_VOICE_TO_CODE.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+authors = [
+    {name = "Voice to Code Team"}
+]
+
+dependencies = [
+    "fastapi>=0.115.5",
+    "uvicorn>=0.34.0",
+    "anthropic>=0.42.0",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.10.3",
+    # Voice-to-Code System Dependencies
+    "PyAudioWPatch>=0.2.12.7",
+    "numpy>=2.2.1",
+    "google-generativeai>=0.8.0",
+]
+
+[project.optional-dependencies]
+# Transcription options - choose one or install all
+local = [
+    "openai-whisper",  # FREE - runs locally (slower on CPU)
+]
+
+groq = [
+    "groq",  # FREE - ultra-fast Whisper on GPUs, 14,400 requests/day
+]
+
+openai = [
+    "openai>=1.59.5",  # $0.006/min
+]
+
+google = [
+    "google-cloud-speech",  # 60 free min/month, then $0.016/min
+]
+
+# Install all transcription options
+all = [
+    "openai-whisper",
+    "openai>=1.59.5",
+    "google-cloud-speech",
+]
+
+# Development dependencies
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+]
+
+[project.scripts]
+voice-to-code = "voice_to_code:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

@@ -1,0 +1,20 @@
+fastapi==0.115.5
+uvicorn==0.34.0
+anthropic==0.42.0
+python-dotenv==1.0.1
+pydantic==2.10.3
+
+# Voice-to-Code System Dependencies
+PyAudioWPatch==0.2.12.7
+numpy==2.2.1
+wave
+
+# Transcription Options (install based on your choice)
+# Option 1: Local Whisper (FREE, RECOMMENDED)
+openai-whisper
+
+# Option 2: OpenAI Whisper API (costs $0.006/min)
+openai==1.59.5
+
+# Option 3: Google Cloud Speech-to-Text (60 free min/month, then $0.016/min)
+google-cloud-speech

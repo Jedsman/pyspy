@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice-to-Code Overlay</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: transparent;  /* Fully transparent body */
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+
+        .titlebar {
+            background: rgba(10, 10, 10, 0.9);
+            padding: 5px 10px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            -webkit-app-region: drag;  /* Draggable title bar */
+        }
+
+        .window-title {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            -webkit-app-region: drag;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+            -webkit-app-region: no-drag;
+        }
+
+        .window-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #ffffff;
+            width: 30px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+        }
+
+        .window-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .window-btn.close:hover {
+            background: #e81123;
+        }
+
+        .header {
+            background: rgba(10, 10, 10, 0.9);  /* Semi-transparent dark background */
+            padding: 10px 15px;
+            border-radius: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            -webkit-app-region: no-drag;  /* Allow interaction in header */
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+        }
+
+        .status-dot.disconnected {
+            background: #f44336;
+            box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+        }
+
+        .status-dot.connecting {
+            background: #ffa500;
+            box-shadow: 0 0 8px rgba(255, 165, 0, 0.6);
+        }
+
+        input, select, button {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            outline: none;
+        }
+
+        input:focus, select:focus {
+            border-color: rgba(100, 150, 255, 0.5);
+        }
+
+        button {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: rgba(50, 50, 50, 0.9);
+        }
+
+        .opacity-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .opacity-control label {
+            font-size: 11px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .opacity-control span {
+            min-width: 35px;
+            font-size: 10px;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            padding: 0;
+        }
+
+        #syncBtn {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.2s;
+            cursor: pointer;
+            min-width: 32px;
+        }
+
+        #syncBtn:hover {
+            background: rgba(50, 50, 50, 0.9);
+        }
+
+        .content {
+            flex: 1;
+            background: rgba(10, 10, 10, 0.3);  /* Semi-transparent dark background */
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            -webkit-app-region: no-drag;
+        }
+
+        .tab-container {
+            display: flex;
+            overflow-x: auto;
+            overflow-y: hidden;
+            gap: 5px;
+            padding: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .tab-container::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .tab-container::-webkit-scrollbar-track {
+            background: rgba(30, 30, 30, 0.3);
+        }
+
+        .tab-container::-webkit-scrollbar-thumb {
+            background: rgba(100, 100, 100, 0.5);
+            border-radius: 3px;
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: rgba(50, 50, 50, 0.8);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .tab.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: rgba(76, 175, 80, 0.5);
+            color: #ffffff;
+        }
+
+        .tab-close {
+            margin-left: 4px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .tab-close:hover {
+            color: #e81123;
+        }
+
+        .empty-tabs {
+            padding: 8px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+        }
+
+        .code-container {
+            flex: 1;
+            overflow: auto;
+            padding: 15px;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .code-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .code-container::-webkit-scrollbar-track {
+            background: rgba(30, 30, 30, 0.3);
+        }
+
+        .code-container::-webkit-scrollbar-thumb {
+            background: rgba(100, 100, 100, 0.5);
+            border-radius: 4px;
+        }
+
+        .code-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(120, 120, 120, 0.7);
+        }
+
+        pre {
+            margin: 0;
+            background: transparent !important;
+        }
+
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            text-shadow:
+                0 0 8px rgba(0, 0, 0, 0.9),
+                0 0 12px rgba(0, 0, 0, 0.8),
+                0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .line-numbers-rows {
+            display: none;  /* Hide default line numbers */
+        }
+
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            cursor: nwse-resize;
+            -webkit-app-region: no-drag;
+            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.3) 50%);
+            border-bottom-right-radius: 8px;
+        }
+
+        .resize-handle:hover {
+            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.5) 50%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="titlebar">
+            <div class="window-title">🎙️ Voice-to-Code Overlay</div>
+            <div class="window-controls">
+                <button class="window-btn" onclick="minimizeWindow()" title="Minimize">─</button>
+                <button class="window-btn close" onclick="closeWindow()" title="Close">✕</button>
+            </div>
+        </div>
+        <div class="header">
+            <div class="title">Controls</div>
+            <div class="controls">
+                <div class="status">
+                    <div class="status-dot disconnected" id="statusDot"></div>
+                    <span id="statusText">Disconnected</span>
+                </div>
+                <input type="text" id="serverInput" placeholder="Server (e.g., localhost)" value="localhost" style="width: 150px;">
+                <button onclick="reconnect()">Connect</button>
+                <button onclick="sendGenerate()" style="background: #4caf50; margin-left: 10px;">🆕 New</button>
+                <button onclick="sendUpdate()" style="background: #ff9800;">💾 Update</button>
+                <div class="opacity-control">
+                    <label>BG:</label>
+                    <input type="range" id="bgOpacitySlider" min="0" max="90" value="50" step="5">
+                    <span id="bgOpacityValue">50%</span>
+                </div>
+                <div class="opacity-control">
+                    <label>Text:</label>
+                    <input type="range" id="textOpacitySlider" min="30" max="100" value="100" step="5">
+                    <span id="textOpacityValue">100%</span>
+                </div>
+                <button id="syncBtn" onclick="toggleSync()" title="Toggle sync mode">🔗</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="tab-container" id="tabContainer">
+                <div class="empty-tabs">No files loaded</div>
+            </div>
+            <div class="code-container" id="codeContainer">
+                <div class="empty-state">Waiting for files...</div>
+            </div>
+        </div>
+        <div class="resize-handle"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <!-- Load markup-templating first (required by PHP) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup-templating.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+
+    <script>
+        let ws = null;
+        let files = {};
+        let activeFile = null;
+        let reconnectTimer = null;
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const serverInput = document.getElementById('serverInput');
+        const tabContainer = document.getElementById('tabContainer');
+        const codeContainer = document.getElementById('codeContainer');
+        const bgOpacitySlider = document.getElementById('bgOpacitySlider');
+        const bgOpacityValue = document.getElementById('bgOpacityValue');
+        const textOpacitySlider = document.getElementById('textOpacitySlider');
+        const textOpacityValue = document.getElementById('textOpacityValue');
+        const syncBtn = document.getElementById('syncBtn');
+
+        let syncMode = false;
+
+        // Update background opacity
+        function updateBackgroundOpacity(value) {
+            bgOpacityValue.textContent = value + '%';
+            const opacity = value / 100;
+            document.querySelector('.content').style.backgroundColor = `rgba(10, 10, 10, ${opacity})`;
+        }
+
+        // Update text opacity
+        function updateTextOpacity(value) {
+            textOpacityValue.textContent = value + '%';
+            const opacity = value / 100;
+            const codeElements = document.querySelectorAll('code');
+            codeElements.forEach(el => {
+                el.style.opacity = opacity;
+            });
+        }
+
+        // Toggle sync mode
+        function toggleSync() {
+            syncMode = !syncMode;
+            syncBtn.style.backgroundColor = syncMode ? 'rgba(76, 175, 80, 0.3)' : 'rgba(30, 30, 30, 0.8)';
+            syncBtn.title = syncMode ? 'Sync enabled - sliders move together' : 'Sync disabled - sliders independent';
+
+            if (syncMode) {
+                // Sync text to background when enabling
+                textOpacitySlider.value = bgOpacitySlider.value;
+                updateTextOpacity(bgOpacitySlider.value);
+            }
+        }
+
+        // Background slider handler
+        bgOpacitySlider.addEventListener('input', (e) => {
+            updateBackgroundOpacity(e.target.value);
+            if (syncMode) {
+                textOpacitySlider.value = e.target.value;
+                updateTextOpacity(e.target.value);
+            }
+        });
+
+        // Text slider handler
+        textOpacitySlider.addEventListener('input', (e) => {
+            updateTextOpacity(e.target.value);
+            if (syncMode) {
+                bgOpacitySlider.value = e.target.value;
+                updateBackgroundOpacity(e.target.value);
+            }
+        });
+
+        // Set initial opacity
+        updateBackgroundOpacity(bgOpacitySlider.value);
+        updateTextOpacity(textOpacitySlider.value);
+
+        // Window controls
+        function closeWindow() {
+            window.close();
+        }
+
+        function minimizeWindow() {
+            // Electron doesn't expose minimize directly to renderer
+            // We'll just hide it for now
+            window.close();
+        }
+
+        function setStatus(status, colorClass) {
+            statusDot.className = `status-dot ${colorClass}`;
+            statusText.textContent = status;
+        }
+
+        function connect() {
+            const server = serverInput.value || 'localhost';
+            const wsUrl = `ws://${server}:5000/ws`;
+
+            if (ws) {
+                ws.close();
+            }
+
+            setStatus('Connecting...', 'connecting');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                setStatus('Connected', '');
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.filename && data.content !== undefined) {
+                        updateFile(data.filename, data.content, data.language || 'text');
+                    }
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                setStatus('Disconnected', 'disconnected');
+                // Auto-reconnect after 3 seconds
+                if (!reconnectTimer) {
+                    reconnectTimer = setTimeout(connect, 3000);
+                }
+            };
+        }
+
+        function reconnect() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+            connect();
+        }
+
+        async function sendGenerate() {
+            const server = serverInput.value || 'localhost';
+            try {
+                const response = await fetch(`http://${server}:5000/api/command/generate`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    console.log('Generate command sent successfully');
+                }
+            } catch (error) {
+                console.error('Error sending generate command:', error);
+            }
+        }
+
+        async function sendUpdate() {
+            const server = serverInput.value || 'localhost';
+            try {
+                const response = await fetch(`http://${server}:5000/api/command/update`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    console.log('Update command sent successfully');
+                }
+            } catch (error) {
+                console.error('Error sending update command:', error);
+            }
+        }
+
+        function updateFile(filename, content, language) {
+            files[filename] = { content, language };
+
+            // If this is the active file or no file is active, display it
+            if (activeFile === filename || activeFile === null) {
+                activeFile = filename;
+                displayFile(filename);
+            }
+            updateTabs();
+        }
+
+        function updateTabs() {
+            const filenames = Object.keys(files).sort();
+
+            if (filenames.length === 0) {
+                tabContainer.innerHTML = '<div class="empty-tabs">No files loaded</div>';
+                return;
+            }
+
+            tabContainer.innerHTML = filenames.map(filename => {
+                const isActive = filename === activeFile;
+                return `
+                    <div class="tab ${isActive ? 'active' : ''}" onclick="switchFile('${filename}')">
+                        <span>${filename}</span>
+                        <span class="tab-close" onclick="event.stopPropagation(); closeTab('${filename}')">✕</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function switchFile(filename) {
+            if (filename && files[filename]) {
+                activeFile = filename;
+                displayFile(filename);
+                updateTabs();
+            }
+        }
+
+        function closeTab(filename) {
+            delete files[filename];
+
+            if (activeFile === filename) {
+                const remaining = Object.keys(files);
+                activeFile = remaining.length > 0 ? remaining[0] : null;
+
+                if (activeFile) {
+                    displayFile(activeFile);
+                } else {
+                    codeContainer.innerHTML = '<div class="empty-state">Waiting for files...</div>';
+                }
+            }
+
+            updateTabs();
+        }
+
+        function displayFile(filename) {
+            const file = files[filename];
+            if (!file) return;
+
+            const { content, language } = file;
+            const languageClass = language !== 'text' ? `language-${language}` : '';
+
+            codeContainer.innerHTML = `
+                <pre class="line-numbers"><code class="${languageClass}">${escapeHtml(content)}</code></pre>
+            `;
+
+            // Apply syntax highlighting with error handling
+            try {
+                Prism.highlightAll();
+            } catch (e) {
+                console.error('Prism highlighting error:', e);
+                // Content is still visible even if highlighting fails
+            }
+
+            // Apply current text opacity to newly displayed code
+            updateTextOpacity(textOpacitySlider.value);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Connect on load
+        connect();
+
+        // ESC to close (optional - Electron will handle window close)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+    </script>
+</body>
+</html>
