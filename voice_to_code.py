@@ -643,6 +643,9 @@ class VoiceToCodeSystem:
         self.last_command_check = 0
         self.command_check_interval = 0.5  # Check every 0.5 seconds
 
+        # Control when listening starts
+        self.listening_enabled = False
+
         if debug and not self.transcript_only:
             print(f"🗣️  Edit keyword: '{self.edit_keyword} [filename]'")
             print(f"⏹️  Close keyword: '{self.close_keyword}'")
@@ -686,6 +689,15 @@ class VoiceToCodeSystem:
         """Called to generate a NEW file, starting a fresh session."""
         print(f"\n⌨️  New File Hotkey pressed! Generating new file...")
         if not self.code_generator: return
+
+        # Start listening if not already enabled
+        if not self.listening_enabled:
+            self.listening_enabled = True
+            print("🎙️  Starting audio capture...")
+            self.audio_capture.start_capture(
+                mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
+                system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
+            )
 
         try:
             # If speech is currently being detected, force process it immediately
@@ -923,11 +935,16 @@ class VoiceToCodeSystem:
             elif not self.transcript_only:
                  print(f"⚠️  Hotkeys disabled because 'keyboard' library not found.\n")
 
-
-            self.audio_capture.start_capture(
-                mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
-                system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
-            )
+            # In transcript-only mode, start listening immediately
+            # Otherwise, wait for first trigger (hotkey or remote command)
+            if self.transcript_only:
+                self.listening_enabled = True
+                self.audio_capture.start_capture(
+                    mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
+                    system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
+                )
+            else:
+                print("💤 Waiting for first trigger (New button or hotkey) to start listening...\n")
 
             while self.is_running:
                 # Check for remote commands if not in transcript-only mode
