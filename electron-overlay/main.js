@@ -37,7 +37,7 @@ function createWindow() {
   mainWindow.loadFile('overlay.html');
 
   // Optional: Open DevTools for debugging
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;

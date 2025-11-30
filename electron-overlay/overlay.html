@@ -1620,8 +1620,12 @@
         };
 
         function startScreenshotSelection() {
+            console.log('Screenshot button clicked!');
             const overlay = document.getElementById('screenshotOverlay');
             const container = document.querySelector('.container');
+
+            console.log('Overlay element:', overlay);
+            console.log('Container element:', container);
 
             // Hide the main overlay container
             container.style.opacity = '0';
@@ -1630,6 +1634,8 @@
             // Show screenshot overlay
             overlay.classList.add('active');
             screenshotState.isSelecting = false;
+
+            console.log('Screenshot selection mode activated');
         }
 
         function cancelScreenshotSelection() {
