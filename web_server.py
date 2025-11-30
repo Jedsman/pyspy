@@ -14,6 +14,7 @@ from watchdog.events import FileSystemEventHandler
 import uvicorn
 from typing import Set
 import os
+import time
 
 app = FastAPI()
 
@@ -26,6 +27,18 @@ GENERATED_CODE_DIR = Path("generated_code")
 # Path to command file for IPC
 COMMAND_FILE = Path("generated_code") / ".command"
 
+# Path to coach suggestions file for IPC
+COACH_SUGGESTIONS_FILE = Path("generated_code") / ".coach_suggestions"
+
+# Path to current mode file for IPC
+CURRENT_MODE_FILE = Path("generated_code") / ".current_mode"
+
+# Path to transcript file for IPC
+TRANSCRIPT_FILE = Path("generated_code") / ".transcript"
+
+# Path to live transcript buffer for IPC
+LIVE_TRANSCRIPT_FILE = Path("generated_code") / ".live_transcript"
+
 
 class CodeFileHandler(FileSystemEventHandler):
     """Watches for file changes in the generated_code directory"""
@@ -33,6 +46,24 @@ class CodeFileHandler(FileSystemEventHandler):
     def __init__(self, broadcast_func):
         self.broadcast_func = broadcast_func
         self.session_files = set()  # Track files created in this session
+        self.last_broadcast = {}  # Track last broadcast time per file to prevent duplicates
+        self.debounce_delay = 0.1  # 100ms debounce delay
+
+    def should_broadcast(self, filepath: Path) -> bool:
+        """Check if enough time has passed since last broadcast for this file"""
+        file_key = str(filepath)
+        current_time = time.time()
+
+        if file_key not in self.last_broadcast:
+            self.last_broadcast[file_key] = current_time
+            return True
+
+        time_since_last = current_time - self.last_broadcast[file_key]
+        if time_since_last >= self.debounce_delay:
+            self.last_broadcast[file_key] = current_time
+            return True
+
+        return False
 
     def on_created(self, event):
         if event.is_directory:
@@ -45,9 +76,104 @@ class CodeFileHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         filepath = Path(event.src_path)
+
+        # Use debouncing to prevent duplicate broadcasts
+        if not self.should_broadcast(filepath):
+            return
+
+        # Check if it's a coach suggestions update
+        if filepath.name == ".coach_suggestions":
+            asyncio.run(self.broadcast_coach_suggestions(filepath))
+            return
+
+        # Check if it's a mode change update
+        if filepath.name == ".current_mode":
+            asyncio.run(self.broadcast_mode_change(filepath))
+            return
+
+        # Check if it's a transcript update
+        if filepath.name == ".transcript":
+            asyncio.run(self.broadcast_transcript(filepath))
+            return
+
+        # Check if it's a live transcript buffer update
+        if filepath.name == ".live_transcript":
+            asyncio.run(self.broadcast_live_transcript(filepath))
+            return
+
         # Only broadcast if this file was created in this session
         if filepath.name in self.session_files:
             asyncio.run(self.broadcast_file_update(filepath, "modified"))
+
+    async def broadcast_coach_suggestions(self, filepath: Path):
+        """Read coach suggestions and broadcast to all connected clients"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            message = {
+                'type': 'coach_suggestion',
+                'question': data.get('question', ''),
+                'suggestions': data.get('suggestions', []),
+                'timestamp': data.get('timestamp', '')
+            }
+
+            await self.broadcast_func(message)
+
+        except Exception as e:
+            print(f"Error broadcasting coach suggestions: {e}")
+
+    async def broadcast_mode_change(self, filepath: Path):
+        """Read mode change and broadcast to all connected clients"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            message = {
+                'type': 'mode_change',
+                'mode': data.get('mode', 'Code'),
+                'timestamp': data.get('timestamp', '')
+            }
+
+            await self.broadcast_func(message)
+
+        except Exception as e:
+            print(f"Error broadcasting mode change: {e}")
+
+    async def broadcast_transcript(self, filepath: Path):
+        """Read transcript segment and broadcast to all connected clients"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            message = {
+                'type': 'transcript',
+                'speaker': data.get('speaker', 'Unknown'),
+                'text': data.get('text', ''),
+                'timestamp': data.get('timestamp', '')
+            }
+
+            await self.broadcast_func(message)
+
+        except Exception as e:
+            print(f"Error broadcasting transcript: {e}")
+
+    async def broadcast_live_transcript(self, filepath: Path):
+        """Read live transcript buffer and broadcast to all connected clients"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            message = {
+                'type': 'live_transcript',
+                'buffer': data.get('buffer', []),
+                'timestamp': data.get('timestamp', '')
+            }
+
+            await self.broadcast_func(message)
+
+        except Exception as e:
+            print(f"Error broadcasting live transcript: {e}")
 
     async def broadcast_file_update(self, filepath: Path, action: str):
         """Read file content and broadcast to all connected clients"""
@@ -602,6 +728,55 @@ async def trigger_update():
     try:
         COMMAND_FILE.write_text("update")
         return {"status": "success", "command": "update"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/mode/toggle")
+async def toggle_mode():
+    """Toggle between Code Generation and Interview Coach mode"""
+    try:
+        COMMAND_FILE.write_text("toggle_mode")
+        return {"status": "success", "command": "toggle_mode"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/transcript/capture")
+async def capture_transcript():
+    """Capture current live transcript buffer as a segment"""
+    try:
+        COMMAND_FILE.write_text("capture_transcript")
+        return {"status": "success", "command": "capture_transcript"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/screenshot/area")
+async def capture_screenshot_area(request: dict):
+    """Capture a selected area of the screen"""
+    try:
+        x = request.get('x', 0)
+        y = request.get('y', 0)
+        width = request.get('width', 0)
+        height = request.get('height', 0)
+
+        # Write screenshot command with coordinates
+        command_data = {
+            "command": "capture_screenshot_area",
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height
+        }
+        COMMAND_FILE.write_text(json.dumps(command_data))
+
+        # Generate filename for response
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}.png"
+
+        return {"status": "success", "command": "capture_screenshot_area", "filename": filename}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

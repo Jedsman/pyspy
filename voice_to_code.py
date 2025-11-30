@@ -576,6 +576,74 @@ class CodeGenerator:
                     self.active_file_path = filepath
 
 
+class InterviewCoach:
+    """Provides real-time interview coaching suggestions using Gemini"""
+
+    def __init__(self):
+        self.conversation_history = []
+        self.system_prompt = self.load_system_prompt()
+
+        # Initialize Gemini
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not found in .env")
+        genai.configure(api_key=api_key)
+        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.gemini_model = genai.GenerativeModel(model_name=model_name)
+        print(f"🎯 Interview Coach initialized with {model_name}")
+
+    def load_system_prompt(self, prompt_filename="prompts/interview_coach.md"):
+        """Load the interview coach system prompt"""
+        try:
+            prompt_path = Path(__file__).parent / prompt_filename
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            print(f"❌ Interview coach prompt not found at: {prompt_path}")
+            return None
+
+    def add_to_conversation(self, speaker: str, text: str):
+        """Add a statement to the conversation history"""
+        self.conversation_history.append(f"[{speaker}]: {text}")
+
+    def generate_suggestions(self, question_text: str) -> list:
+        """Generate coaching suggestions for an interviewer's question"""
+        if not self.system_prompt:
+            return ["Error: System prompt not loaded"]
+
+        prompt = f"""{self.system_prompt}
+
+## Interview Question
+
+{question_text}
+
+## Your Task
+
+Generate 3-5 concise, tactical talking points to help the candidate answer this question effectively. Format as bullet points starting with action verbs."""
+
+        try:
+            print("📡 Generating interview coaching suggestions...")
+            response = self.gemini_model.generate_content(prompt)
+
+            if response.text:
+                # Parse the response into bullet points
+                suggestions = []
+                for line in response.text.split('\n'):
+                    line = line.strip()
+                    if line and (line.startswith('-') or line.startswith('•') or line.startswith('*')):
+                        # Remove bullet point marker
+                        suggestion = line.lstrip('-•* ').strip()
+                        if suggestion:
+                            suggestions.append(suggestion)
+
+                return suggestions if suggestions else [response.text]
+            else:
+                return ["No suggestions generated"]
+
+        except Exception as e:
+            print(f"❌ Error generating suggestions: {e}")
+            return [f"Error: {str(e)}"]
+
 
 class TriggerMode(Enum):
     """Code generation trigger modes"""
@@ -592,16 +660,26 @@ class VoiceToCodeSystem:
                  vad_aggressiveness=2,
                  generation_hotkey="ctrl+shift+g",
                  update_hotkey="ctrl+shift+s",
+                 mode_switch_hotkey="ctrl+shift+m",
+                 capture_hotkey="ctrl+shift+c",
                  edit_keyword="edit file",
-                 close_keyword="close file"):
+                 close_keyword="close file",
+                 coach_mode=False):
         self.audio_capture = AudioCapture(source=audio_source)
         self.edit_keyword = edit_keyword.lower()
         self.close_keyword = close_keyword.lower()
         self.generation_hotkey = generation_hotkey
         self.update_hotkey = update_hotkey
+        self.mode_switch_hotkey = mode_switch_hotkey
+        self.capture_hotkey = capture_hotkey
         self.debug = debug
         self.transcript_only = transcript_only
         self.audio_source = audio_source
+        self.coach_mode = coach_mode
+        self.llm_method = llm_method
+
+        # Live transcript buffer for manual capture
+        self.live_transcript_buffer = []
 
         # Spinner for listening indicator
         self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
@@ -611,7 +689,17 @@ class VoiceToCodeSystem:
         self.vad_system = VoiceActivityDetector(aggressiveness=vad_aggressiveness, sample_rate=48000)
 
         self.transcriber = SpeechTranscriber(method=transcription_method)
-        self.code_generator = CodeGenerator(llm_method=llm_method) if not transcript_only else None
+
+        # Initialize appropriate mode
+        if coach_mode:
+            self.interview_coach = InterviewCoach()
+            self.code_generator = None
+        elif not transcript_only:
+            self.code_generator = CodeGenerator(llm_method=llm_method)
+            self.interview_coach = None
+        else:
+            self.code_generator = None
+            self.interview_coach = None
 
         self.silence_timeout = silence_timeout
         # Recalculate based on chunk size and sample rate (approximate)
@@ -668,10 +756,20 @@ class VoiceToCodeSystem:
 
         try:
             # Read command
-            command = self.command_file.read_text().strip()
+            command_text = self.command_file.read_text().strip()
 
             # Delete command file immediately
             self.command_file.unlink()
+
+            # Try to parse as JSON (for commands with parameters)
+            try:
+                import json
+                command_data = json.loads(command_text)
+                command = command_data.get("command", command_text)
+            except (json.JSONDecodeError, ValueError):
+                # Not JSON, treat as simple string command
+                command = command_text
+                command_data = {}
 
             # Execute command
             if command == "generate":
@@ -680,6 +778,22 @@ class VoiceToCodeSystem:
             elif command == "update":
                 print(f"\n🌐 Remote Update command received!")
                 self.on_update_hotkey_press()
+            elif command == "toggle_mode":
+                print(f"\n🌐 Remote Mode Toggle command received!")
+                self.toggle_mode()
+            elif command == "capture_transcript":
+                print(f"\n🌐 Remote Capture Transcript command received!")
+                self.capture_transcript_segment()
+            elif command == "capture_screenshot":
+                print(f"\n🌐 Remote Screenshot Capture command received!")
+                self.capture_screenshot()
+            elif command == "capture_screenshot_area":
+                print(f"\n🌐 Remote Screenshot Area Capture command received!")
+                x = command_data.get("x", 0)
+                y = command_data.get("y", 0)
+                width = command_data.get("width", 0)
+                height = command_data.get("height", 0)
+                self.capture_screenshot_area(x, y, width, height)
 
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
@@ -777,6 +891,194 @@ class VoiceToCodeSystem:
             print(f"❌ Error in update hotkey callback: {e}")
             import traceback
             traceback.print_exc()
+
+    def send_coach_suggestions(self, question: str, suggestions: list):
+        """Send coaching suggestions to web server for overlay display"""
+        # Write to file for web server to pick up
+        coach_file = Path("generated_code") / ".coach_suggestions"
+        try:
+            import json
+            data = {
+                "question": question,
+                "suggestions": suggestions,
+                "timestamp": datetime.now().isoformat()
+            }
+            coach_file.write_text(json.dumps(data, indent=2))
+        except Exception as e:
+            print(f"⚠️  Failed to write coach suggestions: {e}")
+
+    def send_transcript_segment(self, speaker: str, text: str):
+        """Send transcript segment to web server for overlay display"""
+        # Write to file for web server to pick up
+        transcript_file = Path("generated_code") / ".transcript"
+        try:
+            import json
+            data = {
+                "speaker": speaker,
+                "text": text,
+                "timestamp": datetime.now().isoformat()
+            }
+            transcript_file.write_text(json.dumps(data, indent=2))
+        except Exception as e:
+            print(f"⚠️  Failed to write transcript segment: {e}")
+
+    def send_live_transcript_buffer(self):
+        """Send live transcript buffer to overlay for real-time display"""
+        buffer_file = Path("generated_code") / ".live_transcript"
+        try:
+            import json
+            data = {
+                "buffer": self.live_transcript_buffer,
+                "timestamp": datetime.now().isoformat()
+            }
+            buffer_file.write_text(json.dumps(data, indent=2))
+        except Exception as e:
+            print(f"⚠️  Failed to write live transcript buffer: {e}")
+
+    def capture_transcript_segment(self):
+        """Capture current live buffer as a permanent segment"""
+        if not self.live_transcript_buffer:
+            print("\n📋 No transcript to capture!")
+            return
+
+        # Combine all buffer items into a single segment
+        combined_text = " ".join([item["text"] for item in self.live_transcript_buffer])
+        # Use the speaker from the most recent item (or could be majority vote)
+        speaker = self.live_transcript_buffer[-1]["speaker"] if self.live_transcript_buffer else "Unknown"
+
+        print(f"\n📌 Capturing transcript segment ({len(combined_text)} chars)...")
+
+        # Send as a captured segment
+        self.send_transcript_segment(speaker, combined_text)
+
+        # Save to history for MCP server
+        self.save_transcript_to_history(speaker, combined_text)
+
+        # Clear the live buffer
+        self.live_transcript_buffer.clear()
+        self.send_live_transcript_buffer()  # Update overlay to show empty buffer
+
+    def save_transcript_to_history(self, speaker: str, text: str):
+        """Save transcript segment to history file for MCP server access"""
+        history_file = Path("generated_code") / ".transcript_history"
+        try:
+            import json
+            # Load existing history
+            if history_file.exists():
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    history = json.load(f)
+            else:
+                history = []
+
+            # Add new segment
+            history.append({
+                "speaker": speaker,
+                "text": text,
+                "timestamp": datetime.now().isoformat()
+            })
+
+            # Save updated history
+            history_file.write_text(json.dumps(history, indent=2))
+        except Exception as e:
+            print(f"⚠️  Failed to save transcript to history: {e}")
+
+    def capture_screenshot(self):
+        """Capture a screenshot of the current screen"""
+        try:
+            from PIL import ImageGrab
+            from datetime import datetime
+
+            # Create screenshots directory if it doesn't exist
+            screenshots_dir = Path("generated_code") / "screenshots"
+            screenshots_dir.mkdir(exist_ok=True)
+
+            # Capture screenshot
+            screenshot = ImageGrab.grab()
+
+            # Save with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = screenshots_dir / f"screenshot_{timestamp}.png"
+            screenshot.save(screenshot_path)
+
+            print(f"\n📸 Screenshot saved: {screenshot_path.name}")
+
+        except ImportError:
+            print("\n❌ Screenshot capture requires Pillow library.")
+            print("💡 Install with: pip install Pillow")
+        except Exception as e:
+            print(f"\n❌ Failed to capture screenshot: {e}")
+
+    def capture_screenshot_area(self, x: int, y: int, width: int, height: int):
+        """Capture a specific area of the screen"""
+        try:
+            from PIL import ImageGrab
+            from datetime import datetime
+
+            # Create screenshots directory if it doesn't exist
+            screenshots_dir = Path("generated_code") / "screenshots"
+            screenshots_dir.mkdir(exist_ok=True)
+
+            # Calculate bounding box (left, top, right, bottom)
+            bbox = (x, y, x + width, y + height)
+
+            # Capture screenshot of the specified area
+            screenshot = ImageGrab.grab(bbox=bbox)
+
+            # Save with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = screenshots_dir / f"screenshot_{timestamp}.png"
+            screenshot.save(screenshot_path)
+
+            print(f"\n📸 Screenshot saved: {screenshot_path.name} ({width}x{height})")
+
+        except ImportError:
+            print("\n❌ Screenshot capture requires Pillow library.")
+            print("💡 Install with: pip install Pillow")
+        except Exception as e:
+            print(f"\n❌ Failed to capture screenshot area: {e}")
+
+    def toggle_mode(self):
+        """Toggle between Code Generation mode and Interview Coach mode"""
+        print(f"\n🔄 Toggling mode...")
+
+        # Toggle the mode flag
+        self.coach_mode = not self.coach_mode
+
+        if self.coach_mode:
+            # Switching to Coach Mode
+            print("🎯 Switching to Interview Coach Mode...")
+            self.code_generator = None
+            self.interview_coach = InterviewCoach()
+            mode_name = "Coach"
+
+            # Start audio capture if not already listening
+            if not self.listening_enabled:
+                self.listening_enabled = True
+                print("🎙️  Starting audio capture for coach mode...")
+                self.audio_capture.start_capture(
+                    mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
+                    system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
+                )
+        else:
+            # Switching to Code Generation Mode
+            print("💻 Switching to Code Generation Mode...")
+            self.interview_coach = None
+            self.code_generator = CodeGenerator(llm_method=self.llm_method)
+            mode_name = "Code"
+
+        # Notify web server of mode change
+        mode_file = Path("generated_code") / ".current_mode"
+        try:
+            import json
+            data = {
+                "mode": mode_name,
+                "timestamp": datetime.now().isoformat()
+            }
+            mode_file.write_text(json.dumps(data, indent=2))
+        except Exception as e:
+            print(f"⚠️  Failed to write mode change: {e}")
+
+        print(f"✅ Now in {mode_name} Mode")
 
     def process_transcript_for_commands(self, transcript_text: str):
         """Check transcript for keywords to edit or close a file."""
@@ -878,9 +1180,36 @@ class VoiceToCodeSystem:
             if transcript:
                 labeled_transcript = f"[{source}]: {transcript}"
 
+                # Add to live transcript buffer
+                self.live_transcript_buffer.append({
+                    "speaker": source,
+                    "text": transcript,
+                    "timestamp": datetime.now().isoformat()
+                })
+                # Send updated buffer to overlay
+                self.send_live_transcript_buffer()
+
                 if self.transcript_only:
                     print(f"\n📝 {labeled_transcript}")
+                elif self.coach_mode:
+                    # Coach mode: Generate suggestions when interviewer speaks
+                    print(f"\n📝 {labeled_transcript}")
+
+                    if source == "Partner":  # Interviewer question
+                        self.interview_coach.add_to_conversation("Interviewer", transcript)
+                        suggestions = self.interview_coach.generate_suggestions(transcript)
+
+                        # Display suggestions to console
+                        print("\n💡 Suggested Response:")
+                        for i, suggestion in enumerate(suggestions, 1):
+                            print(f"   {i}. {suggestion}")
+
+                        # Send to web server for overlay display
+                        self.send_coach_suggestions(transcript, suggestions)
+                    else:  # Candidate response
+                        self.interview_coach.add_to_conversation("You", transcript)
                 else:
+                    # Code generation mode
                     # Always add the full transcript to context first
                     self.code_generator.update_context(labeled_transcript)
 
@@ -895,7 +1224,9 @@ class VoiceToCodeSystem:
     def start(self):
         """Start the voice-to-code system"""
         print("\n" + "="*60)
-        if self.transcript_only:
+        if self.coach_mode:
+            print("🎯 INTERVIEW COACH MODE")
+        elif self.transcript_only:
             print("🚀 TRANSCRIPT-ONLY MODE")
         else:
             print("🚀 CONTEXT-AWARE VOICE-TO-CODE SYSTEM")
@@ -907,7 +1238,13 @@ class VoiceToCodeSystem:
         else:
             print(f"\n🎧 Single Audio Mode: {self.audio_source.value}")
 
-        if self.transcript_only:
+        if self.coach_mode:
+            print("\n💡 Interview Coach will provide real-time suggestions for interviewer questions.")
+            print("\n📋 System will listen to the interview and generate tactical response guidance.")
+            print("   - Interviewer questions → AI generates talking points")
+            print("   - Your responses → Tracked for context")
+            print("   - Suggestions appear in console and overlay")
+        elif self.transcript_only:
             print("\n📋 System will transcribe and display conversation in real-time.")
             print("\n💡 Code generation is DISABLED.")
         else:
@@ -926,28 +1263,39 @@ class VoiceToCodeSystem:
             # Register keyboard hotkeys if needed
             if not self.transcript_only and KEYBOARD_AVAILABLE:
                 try:
-                    keyboard.add_hotkey(self.generation_hotkey, self.on_generate_hotkey_press)
-                    print(f"✅ Hotkey '{self.generation_hotkey}' registered for new files.")
-                    keyboard.add_hotkey(self.update_hotkey, self.on_update_hotkey_press)
-                    print(f"✅ Hotkey '{self.update_hotkey}' registered for updating files.\n")
+                    # Code generation hotkeys (only if not in coach mode)
+                    if not self.coach_mode:
+                        keyboard.add_hotkey(self.generation_hotkey, self.on_generate_hotkey_press)
+                        print(f"✅ Hotkey '{self.generation_hotkey}' registered for new files.")
+                        keyboard.add_hotkey(self.update_hotkey, self.on_update_hotkey_press)
+                        print(f"✅ Hotkey '{self.update_hotkey}' registered for updating files.")
+
+                    # Mode switch hotkey (always available)
+                    keyboard.add_hotkey(self.mode_switch_hotkey, self.toggle_mode)
+                    print(f"✅ Hotkey '{self.mode_switch_hotkey}' registered for mode switching.")
+
+                    # Capture transcript hotkey (always available)
+                    keyboard.add_hotkey(self.capture_hotkey, self.capture_transcript_segment)
+                    print(f"✅ Hotkey '{self.capture_hotkey}' registered for capturing transcript.\n")
                 except Exception as e:
                     print(f"⚠️  Failed to register hotkeys: {e}\n")
             elif not self.transcript_only:
                  print(f"⚠️  Hotkeys disabled because 'keyboard' library not found.\n")
 
-            # In transcript-only mode, start listening immediately
-            # Otherwise, wait for first trigger (hotkey or remote command)
-            if self.transcript_only:
+            # Start listening based on mode
+            if self.transcript_only or self.coach_mode:
+                # Transcript-only and coach mode start listening immediately
                 self.listening_enabled = True
                 self.audio_capture.start_capture(
                     mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
                     system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
                 )
             else:
+                # Code generation mode waits for trigger
                 print("💤 Waiting for first trigger (New button or hotkey) to start listening...\n")
 
             while self.is_running:
-                # Check for remote commands if not in transcript-only mode
+                # Check for remote commands (mode toggle is always available)
                 if not self.transcript_only:
                     self.check_remote_commands()
                 time.sleep(0.1)
@@ -1093,9 +1441,10 @@ def main():
             print("💡 Get a free API key at: https://aistudio.google.com/app/apikey")
             return
 
-    # Check for debug mode and transcript-only mode
+    # Check for debug mode, transcript-only mode, and coach mode
     debug = os.getenv("DEBUG", "false").lower() == "true"  # Read from env
     transcript_only = os.getenv("TRANSCRIPT_ONLY", "false").lower() == "true"
+    coach_mode = os.getenv("COACH_MODE", "false").lower() == "true"
 
     # Get audio source configuration
     audio_source_str = os.getenv("AUDIO_SOURCE", "both").lower()
@@ -1124,6 +1473,8 @@ def main():
     # Get trigger mode configuration for code generation
     generation_hotkey = os.getenv("GENERATION_HOTKEY", "ctrl+shift+g")
     update_hotkey = os.getenv("UPDATE_HOTKEY", "ctrl+shift+s")
+    mode_switch_hotkey = os.getenv("MODE_SWITCH_HOTKEY", "ctrl+shift+m")
+    capture_hotkey = os.getenv("CAPTURE_HOTKEY", "ctrl+shift+c")
     edit_keyword = os.getenv("EDIT_KEYWORD", "edit file")
     close_keyword = os.getenv("CLOSE_KEYWORD", "close file")
 
@@ -1143,8 +1494,11 @@ def main():
             vad_aggressiveness=vad_aggressiveness,
             generation_hotkey=generation_hotkey,
             update_hotkey=update_hotkey,
+            mode_switch_hotkey=mode_switch_hotkey,
+            capture_hotkey=capture_hotkey,
             edit_keyword=edit_keyword,
-            close_keyword=close_keyword
+            close_keyword=close_keyword,
+            coach_mode=coach_mode
         )
         system.start()
     except Exception as e:

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "voice-to-code": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "C:\\Users\\theje\\code\\py_llm",
+        "run",
+        "mcp_server.py"
+      ]
+    }
+  }
+}

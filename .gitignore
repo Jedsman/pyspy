@@ -149,3 +149,7 @@ backup/
 # System prompts backup (if you have backups)
 prompts/*.bak
 prompts/*~
+
+# MCP Server data
+generated_code/screenshots/
+generated_code/.transcript_history

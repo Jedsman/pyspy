@@ -1,18 +1,3 @@
-Of course. To enable a back-and-forth iteration cycle on a single file, you would need to add the following capabilities to the system:
-
-Active File Management:
-
-The system needs a way to "open" a file, making it the active target for edits. This would involve a new voice command like "edit fizzbuzz.py".
-The script would then store the path to this file as the "active file" in its memory.
-Context-Aware Prompting:
-
-When you ask for a change (e.g., "change the loop to go up to 200"), the system must first read the entire content of the currently "active file."
-This content must be combined with your spoken instruction and the recent conversation history. This complete package (existing code + your change request) is then sent to the LLM.
-Modified LLM Instructions:
-
-The instructions for the LLM need to change. Instead of just "generate new code," the prompt would become: "Modify the provided file content based on the user's request and return the complete, updated file."
-File Overwriting Logic:
-
-The current save_generated_code function always creates a new timestamped file. This would need to be updated.
-When an "active file" is being edited, the function must overwrite the original file with the new content received from the LLM, rather than creating a new version.
-By implementing these four steps, you would create a complete editing loop: Open -> Modify -> Save, allowing you to iteratively develop a single file using voice commands.
+transparent browser window
+connect web cha session to api session
+clipboard button, hide screen except header
