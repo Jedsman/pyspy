@@ -8,5 +8,14 @@ contextBridge.exposeInMainWorld('electron', {
   },
   resizeWindow: (deltaX, deltaY) => {
     ipcRenderer.send('resize-window', deltaX, deltaY);
+  },
+  startScreenshot: () => {
+    ipcRenderer.send('start-screenshot');
+  },
+  closeScreenshot: (selectionData) => {
+    ipcRenderer.send('close-screenshot', selectionData);
+  },
+  onScreenshotCaptured: (callback) => {
+    ipcRenderer.on('screenshot-captured', (event, data) => callback(data));
   }
 });

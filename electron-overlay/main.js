@@ -2,6 +2,7 @@ const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 
 let mainWindow;
+let screenshotWindow = null;
 
 function createWindow() {
   // Get primary display dimensions
@@ -60,6 +61,60 @@ ipcMain.on('resize-window', (event, deltaX, deltaY) => {
     const newWidth = Math.max(400, currentWidth + deltaX);
     const newHeight = Math.max(300, currentHeight + deltaY);
     window.setSize(newWidth, newHeight);
+  }
+});
+
+// IPC handler for starting screenshot selection
+ipcMain.on('start-screenshot', (event) => {
+  if (screenshotWindow) return; // Already open
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.bounds;
+
+  // Hide main window
+  if (mainWindow) {
+    mainWindow.hide();
+  }
+
+  // Create fullscreen screenshot window
+  screenshotWindow = new BrowserWindow({
+    width: width,
+    height: height,
+    x: 0,
+    y: 0,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    fullscreen: true,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    },
+    backgroundColor: '#00000000'
+  });
+
+  screenshotWindow.loadFile('screenshot.html');
+
+  screenshotWindow.on('closed', () => {
+    screenshotWindow = null;
+    // Show main window again
+    if (mainWindow) {
+      mainWindow.show();
+    }
+  });
+});
+
+// IPC handler for closing screenshot window
+ipcMain.on('close-screenshot', (event, selectionData) => {
+  if (screenshotWindow) {
+    screenshotWindow.close();
+  }
+
+  // Send selection data back to main window
+  if (mainWindow && selectionData) {
+    mainWindow.webContents.send('screenshot-captured', selectionData);
   }
 });
 

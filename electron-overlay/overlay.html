@@ -929,7 +929,7 @@
         <div class="titlebar">
             <div class="window-title">🎙️ Voice-to-Code Overlay</div>
             <div class="window-controls">
-                <button class="window-btn screenshot" onclick="console.log('Button clicked!'); startScreenshotSelection()" title="Screenshot">📸</button>
+                <button class="window-btn screenshot" onclick="startScreenshotSelection()" title="Screenshot">📸</button>
                 <button class="window-btn" onclick="minimizeWindow()" title="Minimize">─</button>
                 <button class="window-btn close" onclick="closeWindow()" title="Close">✕</button>
             </div>
@@ -1621,22 +1621,8 @@
         };
 
         function startScreenshotSelection() {
-            console.log('Screenshot button clicked!');
-            const overlay = document.getElementById('screenshotOverlay');
-            const container = document.querySelector('.container');
-
-            console.log('Overlay element:', overlay);
-            console.log('Container element:', container);
-
-            // Hide the main overlay container
-            container.style.opacity = '0';
-            container.style.pointerEvents = 'none';
-
-            // Show screenshot overlay
-            overlay.classList.add('active');
-            screenshotState.isSelecting = false;
-
-            console.log('Screenshot selection mode activated');
+            // Use Electron IPC to open fullscreen screenshot window
+            window.electron.startScreenshot();
         }
 
         function cancelScreenshotSelection() {
@@ -1745,6 +1731,14 @@
                     }
                 }
             });
+        });
+
+        // Listen for screenshot capture events from the screenshot window
+        window.electron.onScreenshotCaptured((selectionData) => {
+            if (selectionData) {
+                const { x, y, width, height } = selectionData;
+                captureSelectedArea(x, y, width, height);
+            }
         });
 
         // Connect on load
