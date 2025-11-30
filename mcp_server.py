@@ -21,18 +21,19 @@ from mcp.types import (
     EmbeddedResource,
 )
 
+# Use centralized config for all paths
+from config import (
+    GENERATED_CODE_DIR,
+    SCREENSHOTS_DIR,
+    COMMAND_FILE,
+)
+
 # Initialize MCP server
 server = Server("voice-to-code")
 
-# Paths to transcript and screenshot files
-GENERATED_CODE_DIR = Path("generated_code")
+# Define specific file paths based on the configured directories
 LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
-SCREENSHOTS_DIR = GENERATED_CODE_DIR / "screenshots"
-
-# Ensure directories exist
-GENERATED_CODE_DIR.mkdir(exist_ok=True)
-SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 
 @server.list_resources()
@@ -183,8 +184,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
     if name == "capture_transcript":
         # Trigger transcript capture via command file
-        command_file = GENERATED_CODE_DIR / ".command"
-        command_file.write_text("capture_transcript")
+        COMMAND_FILE.write_text("capture_transcript")
 
         return [
             TextContent(
@@ -194,14 +194,13 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         ]
 
     elif name == "capture_screenshot":
-        # Trigger screenshot capture via command file
-        command_file = GENERATED_CODE_DIR / ".command"
-        command_file.write_text("capture_screenshot")
+        # Trigger screenshot capture via UI command
+        COMMAND_FILE.write_text("ui_capture_screenshot")
 
         return [
             TextContent(
                 type="text",
-                text="Screenshot capture triggered. The screenshot will be saved to the screenshots directory.",
+                text="Screenshot capture triggered in the UI. The screenshot will be saved to the screenshots directory.",
             )
         ]
 

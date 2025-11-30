@@ -37,6 +37,7 @@ import webrtcvad
 import sys
 import subprocess
 import socket
+import urllib.request
 
 try:
     import keyboard
@@ -374,11 +375,12 @@ class SpeechTranscriber:
 
 from typing import List
 from pydantic import BaseModel, Field
+from config import GENERATED_CODE_DIR
 
 class CodeGenerator:
     """Generates code using LLM based on a running conversation context."""
 
-    def __init__(self, output_dir="generated_code", llm_method=LLMMethod.GEMINI):
+    def __init__(self, output_dir=GENERATED_CODE_DIR, llm_method=LLMMethod.GEMINI):
         self.llm_method = llm_method
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -652,6 +654,9 @@ class TriggerMode(Enum):
     BOTH = "both"  # Either keyword or hotkey
 
 
+from config import COMMAND_FILE, GENERATED_CODE_DIR, SCREENSHOTS_DIR
+
+
 class VoiceToCodeSystem:
     """Main orchestrator for the voice-to-code system"""
 
@@ -726,8 +731,8 @@ class VoiceToCodeSystem:
         self.max_speech_chunks = 200
         self.min_speech_chunks = 3
 
-        # Command file for remote triggering
-        self.command_file = Path("generated_code") / ".command"
+        # Command file for remote triggering from centralized config
+        self.command_file = COMMAND_FILE
         self.last_command_check = 0
         self.command_check_interval = 0.5  # Check every 0.5 seconds
 
@@ -784,20 +789,32 @@ class VoiceToCodeSystem:
             elif command == "capture_transcript":
                 print(f"\n🌐 Remote Capture Transcript command received!")
                 self.capture_transcript_segment()
-            elif command == "capture_screenshot":
-                print(f"\n🌐 Remote Screenshot Capture command received!")
-                self.capture_screenshot()
-            elif command == "capture_screenshot_area":
-                print(f"\n🌐 Remote Screenshot Area Capture command received!")
-                x = command_data.get("x", 0)
-                y = command_data.get("y", 0)
-                width = command_data.get("width", 0)
-                height = command_data.get("height", 0)
-                self.capture_screenshot_area(x, y, width, height)
+            elif command == "ui_capture_screenshot":
+                print(f"\n🌐 Remote UI Screenshot Capture command received!")
+                self.trigger_ui_screenshot()
 
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
             pass
+
+    def trigger_ui_screenshot(self):
+        """Sends a command to the web server to trigger a screenshot in the UI."""
+        try:
+            print("📡 Relaying command to web server to trigger UI screenshot...")
+            # This is a simple fire-and-forget POST request.
+            # The web_server will broadcast the command to all connected WebSocket clients.
+            req = urllib.request.Request('http://localhost:5000/api/broadcast/command', 
+                                         data=b'{"command": "capture_screenshot"}',
+                                         headers={'Content-Type': 'application/json'},
+                                         method='POST')
+            with urllib.request.urlopen(req) as response:
+                if response.status == 200:
+                    print("✅ Command successfully relayed to web server.")
+                else:
+                    print(f"⚠️  Web server responded with status: {response.status}")
+        except Exception as e:
+            print(f"❌ Failed to send trigger to web server: {e}")
+            print("   Is the web server running? You can start it with: python web_server.py")
 
     def on_generate_hotkey_press(self):
         """Called to generate a NEW file, starting a fresh session."""
@@ -960,7 +977,7 @@ class VoiceToCodeSystem:
 
     def save_transcript_to_history(self, speaker: str, text: str):
         """Save transcript segment to history file for MCP server access"""
-        history_file = Path("generated_code") / ".transcript_history"
+        history_file = GENERATED_CODE_DIR / ".transcript_history"
         try:
             import json
             # Load existing history
@@ -981,61 +998,6 @@ class VoiceToCodeSystem:
             history_file.write_text(json.dumps(history, indent=2))
         except Exception as e:
             print(f"⚠️  Failed to save transcript to history: {e}")
-
-    def capture_screenshot(self):
-        """Capture a screenshot of the current screen"""
-        try:
-            from PIL import ImageGrab
-            from datetime import datetime
-
-            # Create screenshots directory if it doesn't exist
-            screenshots_dir = Path("generated_code") / "screenshots"
-            screenshots_dir.mkdir(exist_ok=True)
-
-            # Capture screenshot
-            screenshot = ImageGrab.grab()
-
-            # Save with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_path = screenshots_dir / f"screenshot_{timestamp}.png"
-            screenshot.save(screenshot_path)
-
-            print(f"\n📸 Screenshot saved: {screenshot_path.name}")
-
-        except ImportError:
-            print("\n❌ Screenshot capture requires Pillow library.")
-            print("💡 Install with: pip install Pillow")
-        except Exception as e:
-            print(f"\n❌ Failed to capture screenshot: {e}")
-
-    def capture_screenshot_area(self, x: int, y: int, width: int, height: int):
-        """Capture a specific area of the screen"""
-        try:
-            from PIL import ImageGrab
-            from datetime import datetime
-
-            # Create screenshots directory if it doesn't exist
-            screenshots_dir = Path("generated_code") / "screenshots"
-            screenshots_dir.mkdir(exist_ok=True)
-
-            # Calculate bounding box (left, top, right, bottom)
-            bbox = (x, y, x + width, y + height)
-
-            # Capture screenshot of the specified area
-            screenshot = ImageGrab.grab(bbox=bbox)
-
-            # Save with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_path = screenshots_dir / f"screenshot_{timestamp}.png"
-            screenshot.save(screenshot_path)
-
-            print(f"\n📸 Screenshot saved: {screenshot_path.name} ({width}x{height})")
-
-        except ImportError:
-            print("\n❌ Screenshot capture requires Pillow library.")
-            print("💡 Install with: pip install Pillow")
-        except Exception as e:
-            print(f"\n❌ Failed to capture screenshot area: {e}")
 
     def toggle_mode(self):
         """Toggle between Code Generation mode and Interview Coach mode"""
@@ -1067,7 +1029,7 @@ class VoiceToCodeSystem:
             mode_name = "Code"
 
         # Notify web server of mode change
-        mode_file = Path("generated_code") / ".current_mode"
+        mode_file = GENERATED_CODE_DIR / ".current_mode"
         try:
             import json
             data = {

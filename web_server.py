@@ -15,29 +15,26 @@ import uvicorn
 from typing import Set
 import os
 import time
+import base64
+
+# Use centralized config for all paths
+from config import (
+    GENERATED_CODE_DIR,
+    COMMAND_FILE,
+    SCREENSHOTS_DIR,
+    SHARED_DRIVE_PATH,
+)
 
 app = FastAPI()
 
 # Track connected WebSocket clients
 connected_clients: Set[WebSocket] = set()
 
-# Path to generated code folder
-GENERATED_CODE_DIR = Path("generated_code")
-
-# Path to command file for IPC
-COMMAND_FILE = Path("generated_code") / ".command"
-
-# Path to coach suggestions file for IPC
-COACH_SUGGESTIONS_FILE = Path("generated_code") / ".coach_suggestions"
-
-# Path to current mode file for IPC
-CURRENT_MODE_FILE = Path("generated_code") / ".current_mode"
-
-# Path to transcript file for IPC
-TRANSCRIPT_FILE = Path("generated_code") / ".transcript"
-
-# Path to live transcript buffer for IPC
-LIVE_TRANSCRIPT_FILE = Path("generated_code") / ".live_transcript"
+# Define specific file paths based on the configured directories
+COACH_SUGGESTIONS_FILE = GENERATED_CODE_DIR / ".coach_suggestions"
+CURRENT_MODE_FILE = GENERATED_CODE_DIR / ".current_mode"
+TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
+LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 
 
 class CodeFileHandler(FileSystemEventHandler):
@@ -781,6 +778,27 @@ async def capture_screenshot_area(request: dict):
         return {"status": "error", "message": str(e)}
 
 
+@app.post("/api/broadcast/command")
+async def broadcast_command(request: dict):
+    """
+    Broadcasts a command to all connected WebSocket clients.
+    Used for IPC from the voice_to_code engine to the UI.
+    """
+    try:
+        command = request.get("command")
+        if not command:
+            return {"status": "error", "message": "Command not provided"}
+
+        print(f"📢 Broadcasting command to UI: {command}")
+        await broadcast_to_clients({
+            "type": "command",
+            "command": command
+        })
+        return {"status": "success", "command": command}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""
@@ -788,6 +806,12 @@ async def websocket_endpoint(websocket: WebSocket):
     connected_clients.add(websocket)
 
     try:
+        # Send shared drive path to the newly connected client
+        await websocket.send_json({
+            "type": "config",
+            "shared_drive_path": str(SHARED_DRIVE_PATH)
+        })
+
         # Send existing files to newly connected client (if enabled)
         load_existing = os.getenv("LOAD_EXISTING_FILES", "true").lower() == "true"
 
@@ -817,7 +841,27 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Keep connection alive
         while True:
-            await websocket.receive_text()
+            # Wait for messages from the client
+            message = await websocket.receive_json()
+            
+            # Handle incoming messages
+            if message.get("type") == "save_screenshot":
+                try:
+                    image_data_b64 = message.get("data", "").split(',')[1]
+                    image_data = base64.b64decode(image_data_b64)
+                    
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"screenshot_{timestamp}.png"
+                    filepath = SCREENSHOTS_DIR / filename
+                    
+                    with open(filepath, "wb") as f:
+                        f.write(image_data)
+                    
+                    print(f"📸 Screenshot saved via WebSocket: {filename}")
+
+                except Exception as e:
+                    print(f"❌ Error saving screenshot from WebSocket: {e}")
 
     except WebSocketDisconnect:
         connected_clients.discard(websocket)

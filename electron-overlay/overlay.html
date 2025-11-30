@@ -1266,6 +1266,13 @@
                 try {
                     const data = JSON.parse(event.data);
 
+                    // Handle remote commands from the server
+                    if (data.type === 'command' && data.command === 'capture_screenshot') {
+                        console.log('Received command to capture screenshot from server.');
+                        startScreenshotSelection();
+                        return; // Stop further processing
+                    }
+                    
                     // Handle mode change
                     if (data.type === 'mode_change') {
                         updateModeDisplay(data.mode);
@@ -1733,11 +1740,32 @@
             });
         });
 
-        // Listen for screenshot capture events from the screenshot window
-        window.electron.onScreenshotCaptured((selectionData) => {
-            if (selectionData) {
-                const { x, y, width, height } = selectionData;
-                captureSelectedArea(x, y, width, height);
+        // Listen for screenshot capture events from the main process
+        window.electron.onScreenshotCaptured((dataUrl) => {
+            if (dataUrl) {
+                // Send the base64 data to the web server to be saved
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'save_screenshot',
+                        data: dataUrl
+                    }));
+                    
+                    console.log('Screenshot data sent to server for saving.');
+
+                    // Show success notification
+                    const notification = document.createElement('div');
+                    notification.className = 'prompt-notification';
+                    notification.textContent = '✓ Screenshot Saved!';
+                    document.body.appendChild(notification);
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            document.body.removeChild(notification);
+                        }
+                    }, 2000);
+
+                } else {
+                    console.error('WebSocket not connected. Cannot save screenshot.');
+                }
             }
         });
 

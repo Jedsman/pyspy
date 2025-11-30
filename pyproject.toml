@@ -20,6 +20,10 @@ dependencies = [
     "PyAudioWPatch>=0.2.12.7",
     "numpy>=2.2.1",
     "google-generativeai>=0.8.0",
+    "webrtcvad>=2.0.10",
+    "setuptools", # Required by webrtcvad for pkg_resources
+    "keyboard>=0.13.5",
+    "mcp[cli]>=1.22.0",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +42,10 @@ openai = [
 
 google = [
     "google-cloud-speech",  # 60 free min/month, then $0.016/min
+]
+
+gemini-client = [
+    "Pillow",       # For image processing
 ]
 
 # Install all transcription options

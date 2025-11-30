@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -106,15 +106,41 @@ ipcMain.on('start-screenshot', (event) => {
   });
 });
 
-// IPC handler for closing screenshot window
-ipcMain.on('close-screenshot', (event, selectionData) => {
+// IPC handler for closing screenshot window and capturing the selected area
+ipcMain.on('close-screenshot', async (event, selectionData) => {
   if (screenshotWindow) {
     screenshotWindow.close();
   }
 
-  // Send selection data back to main window
+  // If a selection was made, capture it
   if (mainWindow && selectionData) {
-    mainWindow.webContents.send('screenshot-captured', selectionData);
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const primaryDisplaySource = sources.find(source => source.display_id === screen.getPrimaryDisplay().id.toString());
+
+      if (primaryDisplaySource) {
+        // The thumbnail is a full-sized nativeImage
+        const screenshotImage = primaryDisplaySource.thumbnail;
+        
+        // Crop the image to the selected area
+        // We need to account for device scale factor
+        const scaleFactor = screen.getPrimaryDisplay().scaleFactor;
+        const croppedImage = screenshotImage.crop({
+          x: Math.floor(selectionData.x * scaleFactor),
+          y: Math.floor(selectionData.y * scaleFactor),
+          width: Math.floor(selectionData.width * scaleFactor),
+          height: Math.floor(selectionData.height * scaleFactor)
+        });
+
+        // Convert to data URL to send to renderer process
+        const dataUrl = croppedImage.toDataURL();
+        
+        // Send the captured image data back to the main window
+        mainWindow.webContents.send('screenshot-captured', dataUrl);
+      }
+    } catch (e) {
+      console.error('Failed to capture screenshot:', e);
+    }
   }
 });
 
