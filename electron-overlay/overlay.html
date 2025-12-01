@@ -1759,8 +1759,11 @@
         });
 
         // Listen for screenshot capture events from the main process
-        window.electronAPI.onScreenshotCaptured(async (dataUrl) => {
-            if (dataUrl) {
+        window.electronAPI.onScreenshotCaptured(async (captureData) => {
+            // The main process now sends an object: { dataUrl, selection }
+            const dataUrl = captureData ? captureData.dataUrl : null;
+
+            if (dataUrl) { // Check if the dataUrl property exists and is not null
                 // Check if there's a pending analysis prompt
                 const analysisPrompt = window.sessionStorage.getItem('analysisPrompt');
                 if (!analysisPrompt) {
@@ -1778,7 +1781,7 @@
                         const message = {
                             type: 'analyze_screenshot',
                             prompt: analysisPrompt,
-                            screenshot_path: saveResult.path
+                            fileName: saveResult.fileName // Use fileName to communicate with the server
                         };
                         ws.send(JSON.stringify(message));
                         console.log('Sent analysis request to backend:', message);

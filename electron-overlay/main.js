@@ -127,13 +127,14 @@ ipcMain.on('close-screenshot', async (event, selection) => {
         }
 
         // Send the captured image data back to the main window's renderer.
-        mainWindow.webContents.send('screenshot-captured', dataUrl);
+        // Also include the original selection rectangle for context.
+        mainWindow.webContents.send('screenshot-captured', { dataUrl, selection });
 
     } catch (e) {
         console.error('Failed to capture screen:', e);
         // Ensure the main window is shown even if capture fails.
         if (mainWindow) mainWindow.show();
-        mainWindow.webContents.send('screenshot-captured', null);
+        mainWindow.webContents.send('screenshot-captured', { dataUrl: null });
     }
 });
 
@@ -155,7 +156,7 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl) => {
 
         fs.writeFileSync(filePath, data);
 
-        return { success: true, fileName: fileName };
+        return { success: true, fileName: fileName, path: filePath }; // Return both for flexibility
     } catch (error) {
         console.error('Failed to save screenshot:', error);
         return { success: false, error: error.message };
