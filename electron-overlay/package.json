@@ -9,6 +9,9 @@
   "keywords": ["electron", "overlay", "transparent"],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.0"
+  },
   "devDependencies": {
     "electron": "^28.0.0"
   }

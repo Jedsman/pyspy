@@ -5,7 +5,6 @@ Exposes transcripts and screenshots as resources to Claude Desktop
 
 import asyncio
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import Any
 import base64
@@ -21,18 +20,15 @@ from mcp.types import (
     EmbeddedResource,
 )
 
+# Import centralized config
+from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR
+
 # Initialize MCP server
 server = Server("voice-to-code")
 
 # Paths to transcript and screenshot files
-GENERATED_CODE_DIR = Path("generated_code")
 LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
-SCREENSHOTS_DIR = GENERATED_CODE_DIR / "screenshots"
-
-# Ensure directories exist
-GENERATED_CODE_DIR.mkdir(exist_ok=True)
-SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 
 @server.list_resources()
@@ -77,7 +73,7 @@ async def handle_list_resources() -> list[Resource]:
 
 
 @server.read_resource()
-async def handle_read_resource(uri: str) -> str:
+async def handle_read_resource(uri: str) -> str | list[TextContent | ImageContent]:
     """Read transcript or screenshot resource content"""
 
     if uri.startswith("transcript://live"):
@@ -128,14 +124,22 @@ async def handle_read_resource(uri: str) -> str:
             return "No captured segments available."
 
     elif uri.startswith("screenshot:///"):
-        # Return screenshot as base64-encoded image
+        # Return screenshot as ImageContent
         screenshot_name = uri.replace("screenshot:///", "")
         screenshot_path = SCREENSHOTS_DIR / screenshot_name
 
         if screenshot_path.exists():
             with open(screenshot_path, 'rb') as f:
                 image_data = base64.b64encode(f.read()).decode('utf-8')
-            return f"data:image/png;base64,{image_data}"
+
+            # Return as a list containing ImageContent
+            return [
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
         else:
             raise ValueError(f"Screenshot not found: {screenshot_name}")
 
@@ -174,11 +178,25 @@ async def handle_list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="view_screenshot",
+            description="View a specific screenshot by filename",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The screenshot filename (e.g., 'capture-2025-12-01T22-31-45-123Z.png')",
+                    }
+                },
+                "required": ["filename"],
+            },
+        ),
     ]
 
 
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Handle tool execution requests"""
 
     if name == "capture_transcript":
@@ -235,12 +253,16 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     context_parts.append(f"[{speaker}] {text}")
                 context_parts.append("")
 
-        # Add screenshot count
-        screenshot_count = len(list(SCREENSHOTS_DIR.glob("*.png")))
-        if screenshot_count > 0:
+        # Add screenshot list
+        screenshots = sorted(SCREENSHOTS_DIR.glob("*.png"), reverse=True)
+        if screenshots:
             context_parts.append(f"=== SCREENSHOTS ===")
-            context_parts.append(f"{screenshot_count} screenshot(s) available")
-            context_parts.append("Use the screenshot:/// resources to view them")
+            context_parts.append(f"{len(screenshots)} screenshot(s) available:")
+            context_parts.append("To view a screenshot, use the view_screenshot tool with the filename.")
+            for screenshot in screenshots[:5]:  # Show last 5 screenshots
+                context_parts.append(f"  - {screenshot.name}")
+            if len(screenshots) > 5:
+                context_parts.append(f"  ... and {len(screenshots) - 5} more")
 
         return [
             TextContent(
@@ -248,6 +270,37 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 text="\n".join(context_parts) if context_parts else "No interview context available yet.",
             )
         ]
+
+    elif name == "view_screenshot":
+        # View a specific screenshot by filename
+        filename = arguments.get("filename")
+        if not filename:
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: No filename provided.",
+                )
+            ]
+
+        screenshot_path = SCREENSHOTS_DIR / filename
+        if screenshot_path.exists():
+            with open(screenshot_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            return [
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Screenshot not found: {filename}",
+                )
+            ]
 
     else:
         raise ValueError(f"Unknown tool: {name}")

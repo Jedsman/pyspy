@@ -1,5 +1,8 @@
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
 const path = require('path');
+const fs = require('fs');
+// Load environment variables from .env file in the same directory as main.js
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let screenshotWindow = null;
@@ -64,57 +67,108 @@ ipcMain.on('resize-window', (event, deltaX, deltaY) => {
   }
 });
 
-// IPC handler for starting screenshot selection
-ipcMain.on('start-screenshot', (event) => {
-  if (screenshotWindow) return; // Already open
+// --- Screenshot Flow ---
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.bounds;
-
-  // Hide main window
+// 1. Start the screenshot process
+ipcMain.on('start-screenshot', () => {
   if (mainWindow) {
     mainWindow.hide();
   }
 
-  // Create fullscreen screenshot window
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.size;
+
   screenshotWindow = new BrowserWindow({
-    width: width,
-    height: height,
+    width,
+    height,
     x: 0,
     y: 0,
-    transparent: true,
     frame: false,
-    alwaysOnTop: true,
-    fullscreen: true,
-    skipTaskbar: true,
+    transparent: true,
     webPreferences: {
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      nodeIntegration: false,
     },
-    backgroundColor: '#00000000'
+    fullscreen: true,
+    alwaysOnTop: true,
   });
 
   screenshotWindow.loadFile('screenshot.html');
+});
 
-  screenshotWindow.on('closed', () => {
+// 2. Close the screenshot window and capture the screen
+ipcMain.on('close-screenshot', async (event, selection) => {
+  // Close the transparent screenshot window first
+  if (screenshotWindow) {
+    screenshotWindow.close();
     screenshotWindow = null;
-    // Show main window again
+  }
+
+  // If no selection was made (e.g., user pressed ESC), do nothing further.
+  if (!selection) {
+    if (mainWindow) mainWindow.show(); // Show the window on cancellation.
+    mainWindow.webContents.send('screenshot-captured', null);
+    return;
+  }
+
+  try {
+    // Get all available desktop sources (screens)
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: screen.getPrimaryDisplay().size // Capture at full resolution
+    });
+
+    // Find the source for the primary display.
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const primarySource = sources.find(source => source.display_id === primaryDisplay.id.toString());
+
+    if (!primarySource) {
+      throw new Error('Primary display source not found.');
+    }
+
+    // Crop the full-screen thumbnail to the user's selection.
+    const croppedImage = primarySource.thumbnail.crop(selection);
+    const dataUrl = croppedImage.toDataURL();
+
+    // NOW, after the capture is complete, show the main window.
     if (mainWindow) {
       mainWindow.show();
     }
-  });
+
+    // Send the captured image data back to the main window's renderer.
+    // Also include the original selection rectangle for context.
+    mainWindow.webContents.send('screenshot-captured', { dataUrl, selection });
+
+  } catch (e) {
+    console.error('Failed to capture screen:', e);
+    // Ensure the main window is shown even if capture fails.
+    if (mainWindow) mainWindow.show();
+    mainWindow.webContents.send('screenshot-captured', { dataUrl: null });
+  }
 });
 
-// IPC handler for closing screenshot window
-ipcMain.on('close-screenshot', (event, selectionData) => {
-  if (screenshotWindow) {
-    screenshotWindow.close();
-  }
+// 3. Save the captured data URL to a file
+ipcMain.handle('save-screenshot-data', async (event, dataUrl) => {
+  try {
+    // Use the path from the .env file, or a default if not provided.
+    const screenshotsDir = process.env.SCREENSHOT_PATH || path.join(__dirname, '..', 'generated_code', 'screenshots');
 
-  // Send selection data back to main window
-  if (mainWindow && selectionData) {
-    mainWindow.webContents.send('screenshot-captured', selectionData);
+    if (!fs.existsSync(screenshotsDir)) {
+      fs.mkdirSync(screenshotsDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `capture-${timestamp}.png`;
+    const filePath = path.join(screenshotsDir, fileName);
+    const data = Buffer.from(dataUrl.split(',')[1], 'base64');
+
+    fs.writeFileSync(filePath, data);
+
+    return { success: true, fileName: fileName, path: filePath }; // Return both for flexibility
+  } catch (error) {
+    console.error('Failed to save screenshot:', error);
+    return { success: false, error: error.message };
   }
 });
 

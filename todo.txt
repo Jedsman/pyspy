@@ -1,3 +1,54 @@
-transparent browser window
-connect web cha session to api session
-clipboard button, hide screen except header
+# Feature Port from feat/gemini-mcp to feat/claude-mcp
+
+## Completed Iterations
+
+✅ ITERATION 1: Port config.py and update MCP server to use it
+  ✅ Test: Verify MCP server still works with Claude Desktop after config.py changes
+
+✅ ITERATION 2: Port Electron .env setup and screenshot path configuration
+  ✅ Test: Verify Electron overlay still loads and connects
+
+✅ ITERATION 3: Port enhanced screenshot capture workflow (desktopCapturer)
+  ✅ Test: Capture a screenshot manually via overlay button, verify file saves to Z:\
+  ✅ Fix: Update MCP server to return ImageContent for screenshots
+  ✅ Fix: Add view_screenshot tool for Claude to view images
+  ✅ Test: Verify Claude Desktop can view screenshots using view_screenshot tool
+
+✅ ITERATION 4: Port custom prompts enhancements (action types)
+  ✅ Test: Verify custom prompts UI works (edit, add, delete)
+  ✅ Test: Verify 'capture' action triggers screenshot workflow
+
+## Parked for Later
+
+⏸️ ITERATION 5: Port text input in live buffer and WebSocket text prompt support
+  - Features:
+    * Add text input field to live transcript buffer
+    * Allow typing custom prompts directly in overlay
+    * Press Enter or dedicated button to send
+    * WebSocket support for sending text prompts
+  - Test: Type a prompt in live buffer, press Enter/capture, verify it works
+
+⏸️ ITERATION 6: Port WebSocket remote command support (server triggers capture)
+  - Features:
+    * WebSocket client in overlay.html connects to server (on PC1)
+    * Listen for remote commands like:
+      - { type: 'capture_screenshot' } → triggers screenshot workflow
+      - { type: 'analyze_text_prompt', prompt: 'text' } → sends text prompt
+    * Allows PC1's web_server.py to remotely control PC2's Electron overlay
+  - Test: Trigger screenshot from web_server.py, verify overlay responds
+
+## Summary
+
+Successfully ported core features:
+- Centralized config with environment-based paths (Z:\ for PC2, local for PC1)
+- Enhanced screenshot capture using desktopCapturer API
+- MCP server integration with Claude Desktop
+- view_screenshot tool for viewing images in Claude Desktop
+- Custom prompts with action types (copy vs capture)
+
+System Architecture:
+- PC1: Runs Python system, hosts shared folder
+- PC2: Runs Electron overlay + Claude Desktop + MCP server
+- Z:\ on PC2 maps to generated_code folder on PC1
+- Screenshots saved to Z:\screenshots, accessible by both machines
+- MCP server exposes screenshots to Claude Desktop via view_screenshot tool

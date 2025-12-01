@@ -8,33 +8,38 @@ const DEFAULT_PROMPTS = [
     {
         id: 'default-1',
         icon: '📄',
-        label: 'Review Latest Question',
-        prompt: 'Look at my latest captured transcript segment and help me craft a strong answer to the interviewer\'s question.'
+        label: 'Review Code Question',
+        prompt: 'Use the provided screenshot to analyse any questions about the code or code snippet present.',
+        action: 'copy'
     },
     {
         id: 'default-2',
-        icon: '📚',
-        label: 'Review All Segments',
-        prompt: 'Review all my captured transcript segments and give me feedback on how the interview is going so far.'
+        icon: '📄',
+        label: 'Debug Code Question',
+        prompt: 'Use the provided screenshot to analyse the code present along with any info about the code. Provide a concise response detailing what is wrong and how to fix it.',
+        action: 'copy'
     },
     {
         id: 'default-3',
         icon: '📸',
-        label: 'Capture & Analyze Screen',
-        prompt: 'Capture a screenshot of my current screen and help me analyze what\'s shown.'
+        label: 'Capture & Analyze Code',
+        prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing',
+        action: 'capture'
     },
     {
         id: 'default-4',
-        icon: '🎯',
-        label: 'Overall Interview Feedback',
-        prompt: 'Based on all my interview transcript segments, give me detailed feedback on:\n1. What I did well\n2. What I could improve\n3. Any red flags or concerns\n4. Overall assessment'
+        icon: '📸',
+        label: 'Capture & find issues',
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list',
+        action: 'capture'
     },
     {
         id: 'default-5',
-        icon: '💡',
-        label: 'How Can I Improve?',
-        prompt: 'Review my interview transcripts and give me 3-5 specific, actionable tips for improving my answers in the remaining portion of the interview.'
-    }
+        icon: '📸',
+        label: 'Capture & suggest improvements',
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list',
+        action: 'capture'
+    },
 ];
 
 class CustomPromptsManager {
@@ -75,12 +80,13 @@ class CustomPromptsManager {
     }
 
     // Add a new prompt
-    addPrompt(icon, label, prompt) {
+    addPrompt(icon, label, prompt, action) {
         const newPrompt = {
             id: 'custom-' + Date.now(),
             icon: icon || '📝',
             label: label,
-            prompt: prompt
+            prompt: prompt,
+            action: action || 'copy'
         };
         this.prompts.push(newPrompt);
         this.savePrompts();
@@ -88,14 +94,15 @@ class CustomPromptsManager {
     }
 
     // Update an existing prompt
-    updatePrompt(id, icon, label, prompt) {
+    updatePrompt(id, icon, label, prompt, action) {
         const index = this.prompts.findIndex(p => p.id === id);
         if (index !== -1) {
             this.prompts[index] = {
                 id: id,
                 icon: icon || '📝',
                 label: label,
-                prompt: prompt
+                prompt: prompt,
+                action: action || 'copy'
             };
             this.savePrompts();
             return true;
@@ -149,7 +156,7 @@ function renderPrompts() {
                 <div class="prompt-text">${escapeHtml(prompt.prompt)}</div>
             </div>
             <div class="prompt-actions">
-                <button class="prompt-action-btn copy-btn" onclick="copyPromptText('${prompt.id}')" title="Copy to clipboard">
+                <button class="prompt-action-btn copy-btn" onclick="handlePromptClick('${prompt.id}')" title="${prompt.action === 'capture' ? 'Capture screenshot' : 'Copy to clipboard'}">
                     📋
                 </button>
                 <button class="prompt-action-btn edit-btn" onclick="editPrompt('${prompt.id}')" title="Edit">
@@ -176,16 +183,27 @@ function togglePrompts() {
     }
 }
 
-async function copyPromptText(id) {
+async function handlePromptClick(id) {
     const prompt = promptsManager.getPrompt(id);
     if (!prompt) return;
 
-    try {
-        await navigator.clipboard.writeText(prompt.prompt);
-        showNotification('✓ Prompt Copied! Paste in Claude Desktop');
-    } catch (err) {
-        console.error('Failed to copy prompt:', err);
-        showNotification('❌ Failed to copy prompt');
+    if (prompt.action === 'capture') {
+        // New "Capture" behavior
+        console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
+        // Store the prompt text so the capture handler can find it
+        window.sessionStorage.setItem('analysisPrompt', prompt.prompt);
+        // Start the screenshot process
+        window.electronAPI.startScreenshot();
+    } else {
+        // "Copy" behavior - copy to clipboard for pasting in Claude Desktop
+        console.log(`Copying prompt: "${prompt.label}"`);
+        try {
+            await navigator.clipboard.writeText(prompt.prompt);
+            showNotification('✓ Prompt Copied! Paste in Claude Desktop');
+        } catch (err) {
+            console.error('Failed to copy prompt:', err);
+            showNotification('❌ Failed to copy prompt');
+        }
     }
 }
 
@@ -222,11 +240,13 @@ function showPromptModal(prompt) {
     const iconInput = document.getElementById('promptIcon');
     const labelInput = document.getElementById('promptLabel');
     const promptInput = document.getElementById('promptText');
+    const actionInput = document.getElementById('promptAction');
 
     modalTitle.textContent = isEdit ? '✏️ Edit Prompt' : '➕ Add New Prompt';
     iconInput.value = isEdit ? prompt.icon : '📝';
     labelInput.value = isEdit ? prompt.label : '';
     promptInput.value = isEdit ? prompt.prompt : '';
+    actionInput.value = isEdit ? prompt.action : 'copy';
 
     modal.dataset.editId = isEdit ? prompt.id : '';
     modal.classList.add('show');
@@ -242,6 +262,7 @@ function savePromptFromModal() {
     const icon = document.getElementById('promptIcon').value.trim() || '📝';
     const label = document.getElementById('promptLabel').value.trim();
     const prompt = document.getElementById('promptText').value.trim();
+    const action = document.getElementById('promptAction').value;
 
     if (!label) {
         alert('Please enter a label for the prompt');
@@ -256,11 +277,11 @@ function savePromptFromModal() {
     const editId = modal.dataset.editId;
     if (editId) {
         // Edit existing
-        promptsManager.updatePrompt(editId, icon, label, prompt);
+        promptsManager.updatePrompt(editId, icon, label, prompt, action);
         showNotification('✓ Prompt updated');
     } else {
         // Add new
-        promptsManager.addPrompt(icon, label, prompt);
+        promptsManager.addPrompt(icon, label, prompt, action);
         showNotification('✓ Prompt added');
     }
 
