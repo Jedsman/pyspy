@@ -767,6 +767,7 @@ class VoiceToCodeSystem:
             self.command_file.unlink()
 
             # Try to parse as JSON (for commands with parameters)
+            print(f"DEBUG: Raw command_text from file: '{command_text}'") # Added debug log
             try:
                 import json
                 command_data = json.loads(command_text)
@@ -786,12 +787,19 @@ class VoiceToCodeSystem:
             elif command == "toggle_mode":
                 print(f"\n🌐 Remote Mode Toggle command received!")
                 self.toggle_mode()
+                print(f"DEBUG: toggle_mode() function completed.") # Added debug log
             elif command == "capture_transcript":
                 print(f"\n🌐 Remote Capture Transcript command received!")
                 self.capture_transcript_segment()
             elif command == "ui_capture_screenshot":
                 print(f"\n🌐 Remote UI Screenshot Capture command received!")
                 self.trigger_ui_screenshot()
+            elif command == "analyze_screenshot":
+                prompt = command_data.get("prompt", "What is this?")
+                screenshot_path = command_data.get("screenshot_path")
+                print(f"\n🖼️  Remote Analyze Screenshot command received!")
+                if screenshot_path:
+                    self.analyze_screenshot_with_gemini_cli(prompt, screenshot_path)
 
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
@@ -909,18 +917,20 @@ class VoiceToCodeSystem:
             import traceback
             traceback.print_exc()
 
-    def send_coach_suggestions(self, question: str, suggestions: list):
+    def send_coach_suggestions(self, question: str, suggestions: list, status: str = "completed"):
         """Send coaching suggestions to web server for overlay display"""
         # Write to file for web server to pick up
         coach_file = Path("generated_code") / ".coach_suggestions"
         try:
-            import json
             data = {
                 "question": question,
                 "suggestions": suggestions,
+                "status": status,
                 "timestamp": datetime.now().isoformat()
             }
+            print(f"DEBUG: Writing to .coach_suggestions: {data}")
             coach_file.write_text(json.dumps(data, indent=2))
+            print("DEBUG: Write to .coach_suggestions completed.")
         except Exception as e:
             print(f"⚠️  Failed to write coach suggestions: {e}")
 
@@ -1031,16 +1041,132 @@ class VoiceToCodeSystem:
         # Notify web server of mode change
         mode_file = GENERATED_CODE_DIR / ".current_mode"
         try:
-            import json
             data = {
                 "mode": mode_name,
                 "timestamp": datetime.now().isoformat()
             }
             mode_file.write_text(json.dumps(data, indent=2))
+            print(f"DEBUG: Wrote to .current_mode file: {mode_file.name} with content: {json.dumps(data, indent=2)}") # Added debug log
         except Exception as e:
             print(f"⚠️  Failed to write mode change: {e}")
 
         print(f"✅ Now in {mode_name} Mode")
+
+    def _perform_gemini_analysis_in_thread(self, prompt: str, image_path_obj: Path):
+        """
+        Helper function to run the blocking Gemini API call in a separate thread.
+        """
+        print("DEBUG: _perform_gemini_analysis_in_thread started")
+        try:
+            # --- This logic is now inside the thread ---
+            model_to_use = None
+            if self.coach_mode and self.interview_coach and self.interview_coach.gemini_model:
+                model_to_use = self.interview_coach.gemini_model
+            else:
+                temp_coach = InterviewCoach()
+                model_to_use = temp_coach.gemini_model
+            print("DEBUG: Gemini model loaded")
+
+            if not model_to_use:
+                raise ValueError("Gemini model could not be initialized.")
+
+            print("DEBUG: Loading image")
+            import PIL.Image
+
+            img = PIL.Image.open(image_path_obj)
+
+            print("🤖 Calling Gemini API for analysis (in thread)...")
+            response = model_to_use.generate_content([prompt, img])
+            print("✅ Received response from Gemini API.")
+
+            if response and hasattr(response, 'text') and response.text:
+
+                analysis = response.text.strip()
+                print(f"✅ Gemini Analysis Received:\n{analysis}")
+                self.send_coach_suggestions(prompt, analysis.split('\n'))
+            else:
+                analysis = "Gemini did not return any text analysis. The response might be empty or blocked."
+                print(f"❌ {analysis}")
+                self.send_coach_suggestions(prompt, [analysis])
+            print("DEBUG: _perform_gemini_analysis_in_thread completed successfully")
+
+        except genai.types.generation_types.BlockedPromptException as e:
+            error_message = f"Gemini API request was blocked. Reason: {e}"
+            print(f"❌ {error_message}")
+            self.send_coach_suggestions(prompt, [error_message])
+            print("DEBUG: _perform_gemini_analysis_in_thread completed with BlockedPromptException")
+        except Exception as e:
+            error_message = f"An unexpected error occurred during screenshot analysis: {e}"
+            print(f"❌ {error_message}")
+            import traceback
+            traceback.print_exc()
+            self.send_coach_suggestions(prompt, [error_message])
+            print("DEBUG: _perform_gemini_analysis_in_thread completed with Exception")
+
+
+    def analyze_screenshot_with_gemini_cli(self, prompt: str, image_path: str): # Renaming this would be a good refactor, but let's keep it for now to minimize changes.
+        """
+        Analyzes a screenshot using the Gemini Python library.
+        Displays the result in the coach suggestions panel.
+        """
+        print(f"🤖 Analyzing screenshot '{Path(image_path).name}' with Gemini API...")
+        print(f"   Prompt: \"{prompt}\"")
+
+        print("DEBUG: Calling send_coach_suggestions with status='loading'")
+        # Immediately send a loading state to the UI
+        self.send_coach_suggestions(prompt, ["Analyzing with Gemini..."], status="loading")
+        print("DEBUG: send_coach_suggestions with status='loading' completed")
+
+        try:
+            print("DEBUG: Entering try block in analyze_screenshot_with_gemini_cli")
+
+            # Ensure the image path is valid
+            image_path_obj = Path(image_path)
+            if not image_path_obj.exists():
+                print(f"❌ Screenshot file not found at: {image_path}")
+                self.send_coach_suggestions(prompt, [f"Error: Screenshot file not found at {image_path}"])
+                return
+
+            # --- Run the blocking API call in a separate thread ---
+            analysis_thread = threading.Thread(
+                target=self._perform_gemini_analysis_in_thread, args=(prompt, image_path_obj)
+            )
+            print("DEBUG: Starting analysis thread")
+            analysis_thread.start()
+            print("DEBUG: Analysis thread started")
+
+        except Exception as e:
+            error_message = f"An unexpected error occurred during screenshot analysis: {e}"
+            print(f"❌ {error_message}")
+            import traceback
+            traceback.print_exc() # Print full traceback for unexpected errors
+            print("DEBUG: Calling send_coach_suggestions with error message")
+            self.send_coach_suggestions(prompt, [error_message])
+            print("DEBUG: send_coach_suggestions with error message completed")
+
+        finally:
+            print("DEBUG: Exiting analyze_screenshot_with_gemini_cli")
+
+    def mic_audio_callback(self, audio_chunk):
+        """Called for each microphone audio chunk"""
+        if not self.is_running: return False
+        has_speech = self.vad_mic.is_speech(audio_chunk)
+        if has_speech:
+            self.mic_speech_detected = True
+            self.mic_silence_counter = 0
+            self.mic_speech_counter += 1
+            self.mic_buffer.append(audio_chunk)
+            if self.mic_speech_counter > self.max_speech_chunks:
+                self.process_speech_segment(source="You")
+                self.mic_speech_detected = False; self.mic_silence_counter = 0; self.mic_speech_counter = 0
+        elif self.mic_speech_detected:
+            self.mic_silence_counter += 1
+            self.mic_buffer.append(audio_chunk)
+            if self.mic_silence_counter > self.silence_chunks_needed:
+                if self.mic_speech_counter >= self.min_speech_chunks:
+                    self.process_speech_segment(source="You")
+                self.mic_speech_detected = False; self.mic_silence_counter = 0; self.mic_speech_counter = 0
+        return True
 
     def process_transcript_for_commands(self, transcript_text: str):
         """Check transcript for keywords to edit or close a file."""
@@ -1064,26 +1190,6 @@ class VoiceToCodeSystem:
             if self.code_generator:
                 self.code_generator.close_active_file()
             return
-
-    def mic_audio_callback(self, audio_chunk):
-        """Called for each microphone audio chunk"""
-        if not self.is_running: return False
-        has_speech = self.vad_mic.is_speech(audio_chunk)
-        if has_speech:
-            self.mic_speech_detected = True
-            self.mic_silence_counter = 0
-            self.mic_speech_counter += 1
-            self.mic_buffer.append(audio_chunk)
-            if self.mic_speech_counter > self.max_speech_chunks:
-                self.process_speech_segment(source="You")
-                self.mic_speech_detected = False; self.mic_silence_counter = 0; self.mic_speech_counter = 0
-        elif self.mic_speech_detected:
-            self.mic_silence_counter += 1
-            self.mic_buffer.append(audio_chunk)
-            if self.mic_silence_counter > self.silence_chunks_needed:
-                if self.mic_speech_counter >= self.min_speech_chunks:
-                    self.process_speech_segment(source="You")
-                self.mic_speech_detected = False; self.mic_silence_counter = 0; self.mic_speech_counter = 0
         return True
 
     def system_audio_callback(self, audio_chunk):

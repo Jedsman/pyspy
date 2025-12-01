@@ -1132,13 +1132,13 @@
             if (overInteractive !== isOverInteractive) {
                 isOverInteractive = overInteractive;
 
-                if (window.electron && window.electron.setIgnoreMouseEvents) {
+                if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
                     if (isOverInteractive) {
                         // Over interactive elements: disable click-through
-                        window.electron.setIgnoreMouseEvents(false);
+                        window.electronAPI.setIgnoreMouseEvents(false);
                     } else {
                         // Over code display: enable click-through with forward option
-                        window.electron.setIgnoreMouseEvents(true, { forward: true });
+                        window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
                     }
                 }
             }
@@ -1158,12 +1158,12 @@
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (isResizing && window.electron && window.electron.resizeWindow) {
+            if (isResizing && window.electronAPI && window.electronAPI.resizeWindow) {
                 const deltaX = e.screenX - lastMouseX;
                 const deltaY = e.screenY - lastMouseY;
 
                 if (deltaX !== 0 || deltaY !== 0) {
-                    window.electron.resizeWindow(deltaX, deltaY);
+                    window.electronAPI.resizeWindow(deltaX, deltaY);
                     lastMouseX = e.screenX;
                     lastMouseY = e.screenY;
                 }
@@ -1287,7 +1287,7 @@
                     }
                     // Handle coach suggestions
                     else if (data.type === 'coach_suggestion') {
-                        displayCoachSuggestion(data.question, data.suggestions);
+                        displayCoachSuggestion(data.question, data.suggestions, data.status);
                     }
                     // Handle file updates
                     else if (data.filename && data.content !== undefined) {
@@ -1352,12 +1352,15 @@
         async function toggleMode() {
             const server = serverInput.value || 'localhost';
             try {
+                console.log(`Attempting to toggle mode via POST to http://${server}:5000/api/mode/toggle`);
                 const response = await fetch(`http://${server}:5000/api/mode/toggle`, {
                     method: 'POST'
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     console.log('Mode toggle command sent successfully');
+                } else {
+                    console.error('Mode toggle command failed with status:', result.status, 'message:', result.message);
                 }
             } catch (error) {
                 console.error('Error toggling mode:', error);
@@ -1468,7 +1471,7 @@
             console.log(`Mode switched to: ${mode}`);
         }
 
-        function displayCoachSuggestion(question, suggestions) {
+        function displayCoachSuggestion(question, suggestions, status = 'completed') {
             // Display coach suggestion in a special format
             tabContainer.innerHTML = `
                 <div style="padding: 10px; width: 100%; background: rgba(156, 39, 176, 0.2); border: 1px solid rgba(156, 39, 176, 0.4); border-radius: 4px;">
@@ -1477,13 +1480,24 @@
                 </div>
             `;
 
-            // Display suggestions in the code container
-            const suggestionsHtml = suggestions.map((suggestion, index) =>
-                `<div style="margin-bottom: 10px;">
-                    <span style="color: #4caf50; font-weight: bold;">${index + 1}.</span>
-                    <span style="color: #ffffff;">${escapeHtml(suggestion)}</span>
-                </div>`
-            ).join('');
+            let suggestionsHtml;
+
+            if (status === 'loading') {
+                suggestionsHtml = `
+                    <div style="display: flex; align-items: center; gap: 10px; color: rgba(255, 255, 255, 0.7);">
+                        <div class="status-dot connecting" style="animation: pulse 1.5s infinite;"></div>
+                        <span>${escapeHtml(suggestions[0] || 'Analyzing...')}</span>
+                    </div>
+                `;
+            } else {
+                // Display suggestions in the code container
+                suggestionsHtml = suggestions.map((suggestion, index) =>
+                    `<div style="margin-bottom: 10px;">
+                        <span style="color: #4caf50; font-weight: bold;">${index + 1}.</span>
+                        <span style="color: #ffffff;">${escapeHtml(suggestion)}</span>
+                    </div>`
+                ).join('');
+            }
 
             codeContainer.innerHTML = `
                 <div style="padding: 20px;">
@@ -1629,7 +1643,7 @@
 
         function startScreenshotSelection() {
             // Use Electron IPC to open fullscreen screenshot window
-            window.electron.startScreenshot();
+            window.electronAPI.startScreenshot();
         }
 
         function cancelScreenshotSelection() {
@@ -1648,38 +1662,21 @@
         }
 
         async function captureSelectedArea(x, y, width, height) {
-            const server = serverInput.value || 'localhost';
-            try {
-                const response = await fetch(`http://${server}:5000/api/screenshot/area`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ x, y, width, height })
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    console.log('Screenshot captured:', result.filename);
-                    // Show success notification
-                    const notification = document.createElement('div');
-                    notification.className = 'prompt-notification';
-                    notification.textContent = '✓ Screenshot Captured!';
-                    document.body.appendChild(notification);
-                    setTimeout(() => {
-                        if (notification.parentNode) {
-                            document.body.removeChild(notification);
-                        }
-                    }, 2000);
-                }
-            } catch (error) {
-                console.error('Error capturing screenshot:', error);
-            }
+            // This function is no longer used. The new flow is handled by 
+            // the 'onScreenshotCaptured' event listener which communicates
+            // directly with the main process and the WebSocket server.
+            // The logic has been moved and improved there.
+            console.warn("Legacy function `captureSelectedArea` was called but is now deprecated.");
         }
 
         // Setup screenshot overlay event listeners
         document.addEventListener('DOMContentLoaded', () => {
             const overlay = document.getElementById('screenshotOverlay');
             const rectangle = document.getElementById('selectionRectangle');
+
+            // This logic is now handled by screenshot.html and the main process.
+            // The code below is effectively unused in the new workflow.
+            // It can be safely removed in a future cleanup.
 
             overlay.addEventListener('mousedown', (e) => {
                 screenshotState.isSelecting = true;
@@ -1741,30 +1738,34 @@
         });
 
         // Listen for screenshot capture events from the main process
-        window.electron.onScreenshotCaptured((dataUrl) => {
+        window.electronAPI.onScreenshotCaptured(async (dataUrl) => {
             if (dataUrl) {
-                // Send the base64 data to the web server to be saved
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'save_screenshot',
-                        data: dataUrl
-                    }));
-                    
-                    console.log('Screenshot data sent to server for saving.');
+                // Check if there's a pending analysis prompt
+                const analysisPrompt = window.sessionStorage.getItem('analysisPrompt');
+                if (!analysisPrompt) {
+                    console.log('Screenshot captured, but no analysis prompt was set.');
+                    return;
+                }
+                window.sessionStorage.removeItem('analysisPrompt'); // Clear the prompt
 
-                    // Show success notification
-                    const notification = document.createElement('div');
-                    notification.className = 'prompt-notification';
-                    notification.textContent = '✓ Screenshot Saved!';
-                    document.body.appendChild(notification);
-                    setTimeout(() => {
-                        if (notification.parentNode) {
-                            document.body.removeChild(notification);
-                        }
-                    }, 2000);
+                console.log('Screenshot captured, saving to file...');
+                const saveResult = await window.electronAPI.saveScreenshotData(dataUrl);
 
-                } else {
-                    console.error('WebSocket not connected. Cannot save screenshot.');
+                if (saveResult.success) {
+                    console.log(`File saved at: ${saveResult.path}`);
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const message = {
+                            type: 'analyze_screenshot',
+                            prompt: analysisPrompt,
+                            screenshot_path: saveResult.path
+                        };
+                        ws.send(JSON.stringify(message));
+                        console.log('Sent analysis request to backend:', message);
+                        showNotification('✓ Analysis request sent!');
+                    } else {
+                        console.error('WebSocket not connected. Cannot send analysis request.');
+                        showNotification('❌ WebSocket not connected.');
+                    }
                 }
             }
         });

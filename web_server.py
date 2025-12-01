@@ -15,26 +15,29 @@ import uvicorn
 from typing import Set
 import os
 import time
-import base64
-
-# Use centralized config for all paths
-from config import (
-    GENERATED_CODE_DIR,
-    COMMAND_FILE,
-    SCREENSHOTS_DIR,
-    SHARED_DRIVE_PATH,
-)
 
 app = FastAPI()
 
 # Track connected WebSocket clients
 connected_clients: Set[WebSocket] = set()
 
-# Define specific file paths based on the configured directories
-COACH_SUGGESTIONS_FILE = GENERATED_CODE_DIR / ".coach_suggestions"
-CURRENT_MODE_FILE = GENERATED_CODE_DIR / ".current_mode"
-TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
-LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
+# Path to generated code folder
+GENERATED_CODE_DIR = Path("generated_code")
+
+# Path to command file for IPC
+COMMAND_FILE = Path("generated_code") / ".command"
+
+# Path to coach suggestions file for IPC
+COACH_SUGGESTIONS_FILE = Path("generated_code") / ".coach_suggestions"
+
+# Path to current mode file for IPC
+CURRENT_MODE_FILE = Path("generated_code") / ".current_mode"
+
+# Path to transcript file for IPC
+TRANSCRIPT_FILE = Path("generated_code") / ".transcript"
+
+# Path to live transcript buffer for IPC
+LIVE_TRANSCRIPT_FILE = Path("generated_code") / ".live_transcript"
 
 
 class CodeFileHandler(FileSystemEventHandler):
@@ -73,6 +76,7 @@ class CodeFileHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         filepath = Path(event.src_path)
+        print(f"DEBUG: File modified detected by watchdog: {filepath.name}") # Added general debug log
 
         # Use debouncing to prevent duplicate broadcasts
         if not self.should_broadcast(filepath):
@@ -80,22 +84,32 @@ class CodeFileHandler(FileSystemEventHandler):
 
         # Check if it's a coach suggestions update
         if filepath.name == ".coach_suggestions":
+            print(f"DEBUG: Handling coach suggestions for {filepath.name}") # Added specific debug log
             asyncio.run(self.broadcast_coach_suggestions(filepath))
             return
 
         # Check if it's a mode change update
         if filepath.name == ".current_mode":
+            print(f"DEBUG: Handling mode change for {filepath.name}") # Added specific debug log
             asyncio.run(self.broadcast_mode_change(filepath))
             return
 
         # Check if it's a transcript update
         if filepath.name == ".transcript":
+            print(f"DEBUG: Handling transcript update for {filepath.name}") # Added specific debug log
             asyncio.run(self.broadcast_transcript(filepath))
             return
 
         # Check if it's a live transcript buffer update
         if filepath.name == ".live_transcript":
+            print(f"DEBUG: Handling live transcript buffer for {filepath.name}") # Added specific debug log
             asyncio.run(self.broadcast_live_transcript(filepath))
+            return
+
+        # Check if it's a screenshot saved notification
+        if filepath.name == ".screenshot_saved":
+            print(f"DEBUG: Handling screenshot saved for {filepath.name}") # Added specific debug log
+            asyncio.run(self.broadcast_screenshot_saved(filepath))
             return
 
         # Only broadcast if this file was created in this session
@@ -131,6 +145,7 @@ class CodeFileHandler(FileSystemEventHandler):
                 'mode': data.get('mode', 'Code'),
                 'timestamp': data.get('timestamp', '')
             }
+            print(f"DEBUG: Broadcasting mode change message: {message}") # Added debug log before broadcast
 
             await self.broadcast_func(message)
 
@@ -171,6 +186,23 @@ class CodeFileHandler(FileSystemEventHandler):
 
         except Exception as e:
             print(f"Error broadcasting live transcript: {e}")
+
+    async def broadcast_screenshot_saved(self, filepath: Path):
+        """Read the path of the saved screenshot and broadcast it."""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            message = {
+                'type': 'screenshot_saved',
+                'path': data.get('path', ''),
+                'timestamp': data.get('timestamp', '')
+            }
+
+            await self.broadcast_func(message)
+
+        except Exception as e:
+            print(f"Error broadcasting screenshot saved notification: {e}")
 
     async def broadcast_file_update(self, filepath: Path, action: str):
         """Read file content and broadcast to all connected clients"""
@@ -778,27 +810,6 @@ async def capture_screenshot_area(request: dict):
         return {"status": "error", "message": str(e)}
 
 
-@app.post("/api/broadcast/command")
-async def broadcast_command(request: dict):
-    """
-    Broadcasts a command to all connected WebSocket clients.
-    Used for IPC from the voice_to_code engine to the UI.
-    """
-    try:
-        command = request.get("command")
-        if not command:
-            return {"status": "error", "message": "Command not provided"}
-
-        print(f"📢 Broadcasting command to UI: {command}")
-        await broadcast_to_clients({
-            "type": "command",
-            "command": command
-        })
-        return {"status": "success", "command": command}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""
@@ -806,12 +817,6 @@ async def websocket_endpoint(websocket: WebSocket):
     connected_clients.add(websocket)
 
     try:
-        # Send shared drive path to the newly connected client
-        await websocket.send_json({
-            "type": "config",
-            "shared_drive_path": str(SHARED_DRIVE_PATH)
-        })
-
         # Send existing files to newly connected client (if enabled)
         load_existing = os.getenv("LOAD_EXISTING_FILES", "true").lower() == "true"
 
@@ -841,27 +846,30 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Keep connection alive
         while True:
-            # Wait for messages from the client
-            message = await websocket.receive_json()
-            
-            # Handle incoming messages
-            if message.get("type") == "save_screenshot":
-                try:
-                    image_data_b64 = message.get("data", "").split(',')[1]
-                    image_data = base64.b64decode(image_data_b64)
-                    
-                    from datetime import datetime
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"screenshot_{timestamp}.png"
-                    filepath = SCREENSHOTS_DIR / filename
-                    
-                    with open(filepath, "wb") as f:
-                        f.write(image_data)
-                    
-                    print(f"📸 Screenshot saved via WebSocket: {filename}")
+            # Wait for a message from the client
+            message_text = await websocket.receive_text()
+            try:
+                data = json.loads(message_text)
+                message_type = data.get('type')
 
-                except Exception as e:
-                    print(f"❌ Error saving screenshot from WebSocket: {e}")
+                # Handle screenshot analysis requests
+                if message_type == 'analyze_screenshot':
+                    prompt = data.get('prompt', 'No prompt provided.')
+                    screenshot_path = data.get('screenshot_path', 'No path provided.')
+                    
+                    # Forward the command to voice_to_code.py via the .command file
+                    command_data = {
+                        "command": "analyze_screenshot",
+                        "prompt": prompt,
+                        "screenshot_path": screenshot_path
+                    }
+                    COMMAND_FILE.write_text(json.dumps(command_data))
+                    print(f"✅ Relayed 'analyze_screenshot' command for path: {screenshot_path}")
+
+            except json.JSONDecodeError:
+                print(f"Received non-JSON message: {message_text}")
+            except Exception as e:
+                print(f"Error processing WebSocket message: {e}")
 
     except WebSocketDisconnect:
         connected_clients.discard(websocket)

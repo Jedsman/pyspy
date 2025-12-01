@@ -20,21 +20,21 @@ const DEFAULT_PROMPTS = [
     {
         id: 'default-3',
         icon: '📸',
-        label: 'Capture & Analyze Screen',
-        prompt: 'Capture a screenshot of my current screen and help me analyze what\'s shown.'
+        label: 'Capture & Analyze code',
+        prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing'
     },
     {
         id: 'default-4',
         icon: '🎯',
-        label: 'Overall Interview Feedback',
-        prompt: 'Based on all my interview transcript segments, give me detailed feedback on:\n1. What I did well\n2. What I could improve\n3. Any red flags or concerns\n4. Overall assessment'
+        label: 'Capture & find issues',
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list'
     },
     {
         id: 'default-5',
         icon: '💡',
-        label: 'How Can I Improve?',
-        prompt: 'Review my interview transcripts and give me 3-5 specific, actionable tips for improving my answers in the remaining portion of the interview.'
-    }
+        label: 'Capture & suggest improvements',
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list'
+    },
 ];
 
 class CustomPromptsManager {
@@ -178,14 +178,25 @@ function togglePrompts() {
 
 async function copyPromptText(id) {
     const prompt = promptsManager.getPrompt(id);
-    if (!prompt) return;
+    if (!prompt) {
+        return;
+    }
 
-    try {
-        await navigator.clipboard.writeText(prompt.prompt);
-        showNotification('✓ Prompt Copied! Paste in Claude Desktop');
-    } catch (err) {
-        console.error('Failed to copy prompt:', err);
-        showNotification('❌ Failed to copy prompt');
+    // Special handling for the screenshot prompt
+    if (prompt.id === 'default-3') { // This is the 'Capture & Analyze Screen' prompt
+        console.log('Triggering screenshot for analysis...');
+        // The actual logic will be handled by the 'screenshot-captured' event listener in overlay.html
+        // We just need to store the prompt text and start the capture.
+        window.sessionStorage.setItem('analysisPrompt', prompt.prompt);
+        window.electronAPI.startScreenshot();
+    } else {
+        try {
+            await navigator.clipboard.writeText(prompt.prompt);
+            showNotification('✓ Prompt Copied!');
+        } catch (err) {
+            console.error('Failed to copy prompt:', err);
+            showNotification('❌ Failed to copy prompt');
+        }
     }
 }
 

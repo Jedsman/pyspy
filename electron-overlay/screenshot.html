@@ -2,21 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Screenshot Selection</title>
+    <title>Screenshot</title>
     <style>
-        * {
+        html, body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
             width: 100vw;
             height: 100vh;
             overflow: hidden;
             background: rgba(0, 0, 0, 0.3);
             cursor: crosshair;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
         .selection-rectangle {
@@ -24,7 +20,6 @@
             border: 2px solid rgba(59, 130, 246, 0.8);
             background: rgba(59, 130, 246, 0.1);
             pointer-events: none;
-            display: none;
         }
 
         .instructions {
@@ -37,36 +32,34 @@
             padding: 12px 24px;
             border-radius: 6px;
             font-size: 13px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            z-index: 100001;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            z-index: 10000;
         }
     </style>
 </head>
 <body>
     <div class="instructions">
-        Click and drag to select area • Press ESC to cancel
+        Click and drag to select an area &bull; Press ESC to cancel
     </div>
-    <div class="selection-rectangle" id="selectionRectangle"></div>
+    <div class="selection-rectangle" id="selectionRectangle" style="display: none;"></div>
 
     <script>
-        let isSelecting = false;
-        let startX = 0;
-        let startY = 0;
         const rectangle = document.getElementById('selectionRectangle');
+        let isSelecting = false;
+        let startX, startY;
 
-        document.body.addEventListener('mousedown', (e) => {
+        document.addEventListener('mousedown', (e) => {
             isSelecting = true;
             startX = e.clientX;
             startY = e.clientY;
             rectangle.style.display = 'block';
-            rectangle.style.left = e.clientX + 'px';
-            rectangle.style.top = e.clientY + 'px';
+            rectangle.style.left = startX + 'px';
+            rectangle.style.top = startY + 'px';
             rectangle.style.width = '0px';
             rectangle.style.height = '0px';
         });
 
-        document.body.addEventListener('mousemove', (e) => {
+        document.addEventListener('mousemove', (e) => {
             if (!isSelecting) return;
 
             const currentX = e.clientX;
@@ -82,30 +75,34 @@
             rectangle.style.height = height + 'px';
         });
 
-        document.body.addEventListener('mouseup', (e) => {
+        document.addEventListener('mouseup', (e) => {
             if (!isSelecting) return;
-
             isSelecting = false;
+
             const endX = e.clientX;
             const endY = e.clientY;
 
-            const x = Math.min(startX, endX);
-            const y = Math.min(startY, endY);
-            const width = Math.abs(endX - startX);
-            const height = Math.abs(endY - startY);
+            const selection = {
+                x: Math.min(startX, endX),
+                y: Math.min(startY, endY),
+                width: Math.abs(endX - startX),
+                height: Math.abs(endY - startY)
+            };
 
-            // Only capture if selection is at least 10x10 pixels
-            if (width > 10 && height > 10) {
-                window.electron.closeScreenshot({ x, y, width, height });
+            // Only send the data if a meaningful selection was made
+            if (selection.width > 10 && selection.height > 10) {
+                window.electronAPI.closeScreenshot(selection);
             } else {
-                window.electron.closeScreenshot(null);
+                // If selection is too small, treat it as a cancellation
+                window.electronAPI.closeScreenshot(null);
             }
         });
 
-        // ESC to cancel
+        // Listen for the Escape key to cancel
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                window.electron.closeScreenshot(null);
+                // Send null data to indicate cancellation
+                window.electronAPI.closeScreenshot(null);
             }
         });
     </script>

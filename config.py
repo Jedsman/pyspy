@@ -9,7 +9,7 @@ import os
 # This allows you to configure the shared location without modifying the code.
 # Example for PC2: set SHARED_DRIVE_PATH=z:/
 # Example for PC1: set SHARED_DRIVE_PATH=c:/path/to/your/shared/folder
-SHARED_DRIVE_PATH = Path(os.getenv("SHARED_DRIVE_PATH", "/"))
+SHARED_DRIVE_PATH = Path(os.getenv("SHARED_DRIVE_PATH", "c:/Users/theje/code/py_llm"))
 
 # Define the main directory for all generated outputs
 GENERATED_CODE_DIR = SHARED_DRIVE_PATH / "generated_code"
