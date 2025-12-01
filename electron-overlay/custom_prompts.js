@@ -8,34 +8,34 @@ const DEFAULT_PROMPTS = [
     {
         id: 'default-1',
         icon: '📄',
-        label: 'Review Latest Question',
-        prompt: 'Look at my latest captured transcript segment and help me craft a strong answer to the interviewer\'s question.',
+        label: 'Review Code Question',
+        prompt: 'Use the provided screenshot to analyse any questions about the code or code snippet present.',
         action: 'copy'
     },
     {
         id: 'default-2',
-        icon: '📚',
-        label: 'Review All Segments',
-        prompt: 'Review all my captured transcript segments and give me feedback on how the interview is going so far.',
+        icon: '📄',
+        label: 'Debug Code Question',
+        prompt: 'Use the provided screenshot to analyse the code present along with any info about the code. Provide a concise response detailing what is wrong and how to fix it.',
         action: 'copy'
     },
     {
         id: 'default-3',
         icon: '📸',
-        label: 'Capture & Analyze code',
+        label: 'Capture & Analyze Code',
         prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing',
         action: 'capture'
     },
     {
         id: 'default-4',
-        icon: '🎯',
+        icon: '📸',
         label: 'Capture & find issues',
         prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list',
         action: 'capture'
     },
     {
         id: 'default-5',
-        icon: '💡',
+        icon: '📸',
         label: 'Capture & suggest improvements',
         prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list',
         action: 'capture'
