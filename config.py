@@ -4,24 +4,16 @@ Defines shared paths and settings.
 """
 from pathlib import Path
 import os
-import socket
 
-# --- Hostname-based configuration for SHARED_DRIVE_PATH ---
-HOSTNAME = socket.gethostname()
+from dotenv import load_dotenv
 
-# Define the paths for each machine.
-PATH_CONFIG = {
-    "AYAR": "c:/Users/theje/code/pyspy",  # Path on PC1 (AYAR)
-    "Mithrim": "z:/",                     # Path on PC2 (Mithrim)
-}
+load_dotenv()
 
-# Determine the shared drive path based on the hostname.
-# It will fall back to a default if the hostname is not found.
-DEFAULT_PATH = "z:/"
-SHARED_DRIVE_PATH_STR = PATH_CONFIG.get(HOSTNAME, DEFAULT_PATH)
-SHARED_DRIVE_PATH = Path(SHARED_DRIVE_PATH_STR)
-
-print(f"INFO: Hostname: '{HOSTNAME}', Shared Drive Path: '{SHARED_DRIVE_PATH}'")
+# Get the shared drive path from an environment variable, defaulting to "z:/"
+# This allows you to configure the shared location without modifying the code.
+# Example for PC2: set SHARED_DRIVE_PATH=z:/
+# Example for PC1: set SHARED_DRIVE_PATH=c:/path/to/your/shared/folder
+SHARED_DRIVE_PATH = Path(os.getenv("SHARED_DRIVE_PATH", "c:/Users/theje/code/py_llm"))
 
 # Define the main directory for all generated outputs
 GENERATED_CODE_DIR = SHARED_DRIVE_PATH / "generated_code"

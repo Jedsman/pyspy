@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
+// Load environment variables from .env file in the same directory as main.js
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let screenshotWindow;
@@ -139,18 +141,21 @@ ipcMain.on('close-screenshot', async (event, selection) => {
 // 3. Save the captured data URL to a file
 ipcMain.handle('save-screenshot-data', async (event, dataUrl) => {
     try {
-        const screenshotsDir = path.join(__dirname, '..', 'generated_code', 'screenshots');
+        // Use the path from the .env file, or a default if not provided.
+        const screenshotsDir = process.env.SCREENSHOT_PATH || path.join(__dirname, '..', 'generated_code', 'screenshots');
+
         if (!fs.existsSync(screenshotsDir)) {
             fs.mkdirSync(screenshotsDir, { recursive: true });
         }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filePath = path.join(screenshotsDir, `capture-${timestamp}.png`);
+        const fileName = `capture-${timestamp}.png`;
+        const filePath = path.join(screenshotsDir, fileName);
         const data = Buffer.from(dataUrl.split(',')[1], 'base64');
 
         fs.writeFileSync(filePath, data);
 
-        return { success: true, path: filePath };
+        return { success: true, fileName: fileName };
     } catch (error) {
         console.error('Failed to save screenshot:', error);
         return { success: false, error: error.message };

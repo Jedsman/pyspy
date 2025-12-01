@@ -23,6 +23,7 @@ connected_clients: Set[WebSocket] = set()
 
 # Path to generated code folder
 GENERATED_CODE_DIR = Path("generated_code")
+SCREENSHOTS_DIR = GENERATED_CODE_DIR / "screenshots"
 
 # Path to command file for IPC
 COMMAND_FILE = Path("generated_code") / ".command"
@@ -854,17 +855,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Handle screenshot analysis requests
                 if message_type == 'analyze_screenshot':
-                    prompt = data.get('prompt', 'No prompt provided.')
-                    screenshot_path = data.get('screenshot_path', 'No path provided.')
-                    
+                    prompt = data.get('prompt', 'No prompt provided')
+                    file_name = data.get('fileName') # Expecting fileName now, not screenshot_path
+
+                    if not file_name:
+                        print("⚠️  'analyze_screenshot' message received without a 'fileName'.")
+                        continue
+
+                    # Construct the full, local path on the server
+                    full_screenshot_path = SCREENSHOTS_DIR / file_name
+
                     # Forward the command to voice_to_code.py via the .command file
-                    command_data = {
-                        "command": "analyze_screenshot",
-                        "prompt": prompt,
-                        "screenshot_path": screenshot_path
-                    }
+                    command_data = {"command": "analyze_screenshot", "prompt": prompt, "screenshot_path": str(full_screenshot_path)}
                     COMMAND_FILE.write_text(json.dumps(command_data))
-                    print(f"✅ Relayed 'analyze_screenshot' command for path: {screenshot_path}")
+                    print(f"✅ Relayed 'analyze_screenshot' command for path: {full_screenshot_path}")
                 
                 elif message_type == 'analyze_text_prompt':
                     prompt = data.get('prompt', 'No prompt provided.')
