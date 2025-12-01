@@ -4,7 +4,7 @@
       "command": "uv",
       "args": [
         "--directory",
-        "C:\\Users\\theje\\code\\py_llm",
+        "C:\\Users\\theje\\code\\pyspy",
         "run",
         "mcp_server.py"
       ]
