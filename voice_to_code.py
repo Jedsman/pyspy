@@ -1057,6 +1057,7 @@ class VoiceToCodeSystem:
         Helper function to run the blocking Gemini API call in a separate thread.
         """
         print("DEBUG: _perform_gemini_analysis_in_thread started")
+        
         try:
             # --- This logic is now inside the thread ---
             model_to_use = None
