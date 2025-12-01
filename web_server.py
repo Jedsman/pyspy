@@ -865,6 +865,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     COMMAND_FILE.write_text(json.dumps(command_data))
                     print(f"✅ Relayed 'analyze_screenshot' command for path: {screenshot_path}")
+                
+                elif message_type == 'analyze_text_prompt':
+                    prompt = data.get('prompt', 'No prompt provided.')
+                    
+                    command_data = {
+                        "command": "analyze_text_prompt",
+                        "prompt": prompt
+                    }
+                    COMMAND_FILE.write_text(json.dumps(command_data))
+                    print(f"✅ Relayed 'analyze_text_prompt' command.")
 
             except json.JSONDecodeError:
                 print(f"Received non-JSON message: {message_text}")

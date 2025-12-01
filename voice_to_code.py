@@ -800,6 +800,11 @@ class VoiceToCodeSystem:
                 print(f"\n🖼️  Remote Analyze Screenshot command received!")
                 if screenshot_path:
                     self.analyze_screenshot_with_gemini_cli(prompt, screenshot_path)
+            elif command == "analyze_text_prompt":
+                prompt = command_data.get("prompt", "No prompt provided.")
+                print(f"\n💬 Remote Analyze Text Prompt command received!")
+                if prompt:
+                    self.analyze_text_with_gemini(prompt)
 
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
@@ -1148,6 +1153,21 @@ class VoiceToCodeSystem:
         finally:
             print("DEBUG: Exiting analyze_screenshot_with_gemini_cli")
 
+    def analyze_text_with_gemini(self, prompt: str):
+        """
+        Analyzes a text prompt using the Gemini Python library and displays the result.
+        This is a simplified version of the screenshot analysis for text-only input.
+        """
+        print(f"🤖 Analyzing text prompt with Gemini API...")
+        print(f"   Prompt: \"{prompt}\"")
+
+        # Immediately send a loading state to the UI
+        self.send_coach_suggestions(prompt, ["Analyzing with Gemini..."], status="loading")
+
+        # Run the analysis in a separate thread to avoid blocking
+        analysis_thread = threading.Thread(target=self._perform_gemini_text_analysis_in_thread, args=(prompt,))
+        analysis_thread.start()
+
     def mic_audio_callback(self, audio_chunk):
         """Called for each microphone audio chunk"""
         if not self.is_running: return False
@@ -1168,6 +1188,39 @@ class VoiceToCodeSystem:
                     self.process_speech_segment(source="You")
                 self.mic_speech_detected = False; self.mic_silence_counter = 0; self.mic_speech_counter = 0
         return True
+
+    def _perform_gemini_text_analysis_in_thread(self, prompt: str):
+        """
+        Helper function to run the blocking Gemini API call for text in a separate thread.
+        """
+        try:
+            model_to_use = None
+            if self.coach_mode and self.interview_coach and self.interview_coach.gemini_model:
+                model_to_use = self.interview_coach.gemini_model
+            else:
+                temp_coach = InterviewCoach()
+                model_to_use = temp_coach.gemini_model
+
+            if not model_to_use:
+                raise ValueError("Gemini model could not be initialized for text analysis.")
+
+            print("🤖 Calling Gemini API for text analysis (in thread)...")
+            response = model_to_use.generate_content(prompt)
+            print("✅ Received response from Gemini API.")
+
+            if response and hasattr(response, 'text') and response.text:
+                analysis = response.text.strip()
+                self.send_coach_suggestions(prompt, analysis.split('\n'))
+            else:
+                analysis = "Gemini did not return any text analysis."
+                self.send_coach_suggestions(prompt, [analysis])
+
+        except Exception as e:
+            error_message = f"An unexpected error occurred during text analysis: {e}"
+            print(f"❌ {error_message}")
+            import traceback
+            traceback.print_exc()
+            self.send_coach_suggestions(prompt, [error_message])
 
     def process_transcript_for_commands(self, transcript_text: str):
         """Check transcript for keywords to edit or close a file."""

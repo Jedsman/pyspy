@@ -994,9 +994,7 @@
                         <span style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">🔴 Live Buffer</span>
                         <button class="capture-btn" onclick="captureTranscript()">📋 Capture</button>
                     </div>
-                    <div class="live-buffer-content" id="liveBufferContent">
-                        <div style="font-size: 11px; color: rgba(255, 255, 255, 0.4);">Waiting for speech...</div>
-                    </div>
+                    <textarea class="live-buffer-content" id="liveBufferContent" placeholder="Live transcript appears here. You can also type a prompt and press Enter to send."></textarea>
                 </div>
                 <div class="transcript-content" id="transcriptContent">
                     <div class="transcript-empty">No segments captured yet...</div>
@@ -1033,6 +1031,13 @@
                 <div class="form-group">
                     <label for="promptText">Prompt Text</label>
                     <textarea id="promptText" rows="6" placeholder="Enter the prompt text that will be copied to clipboard..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="promptAction">Action on Click</label>
+                    <select id="promptAction">
+                        <option value="copy" selected>📋 Copy to Clipboard</option>
+                        <option value="capture">📸 Capture Screen & Analyze</option>
+                    </select>
                 </div>
             </div>
             <div class="prompt-modal-footer">
@@ -1097,6 +1102,9 @@
             liveBufferContent
         ];
 
+        const promptModal = document.getElementById('promptModal');
+        let isModalShowing = false;
+
         // Track if we're currently over an interactive element
         let isOverInteractive = false;
 
@@ -1116,6 +1124,9 @@
                 e.clientY >= window.innerHeight - EDGE_PADDING // Bottom edge
             );
 
+            // Check if the prompt modal is currently visible
+            isModalShowing = promptModal && promptModal.classList.contains('show');
+
             // Check if mouse is over any interactive element
             const overInteractive = nearEdge || interactiveElements.some(el => {
                 if (!el) return false;
@@ -1126,7 +1137,7 @@
                     e.clientY >= rect.top &&
                     e.clientY <= rect.bottom
                 );
-            });
+            }) || isModalShowing; // Include modal visibility in the interactive check
 
             // Only update if state changed (to reduce IPC calls)
             if (overInteractive !== isOverInteractive) {
@@ -1598,37 +1609,47 @@
 
         async function captureTranscript() {
             // Get current buffer content and copy to clipboard
-            const bufferItems = document.querySelectorAll('.buffer-item');
-            if (bufferItems.length > 0) {
-                // Extract text from all buffer items
-                const bufferText = Array.from(bufferItems).map(item => {
-                    // Get the text content without the speaker label
-                    const speaker = item.querySelector('.buffer-speaker').textContent;
-                    const text = item.textContent.replace(speaker, '').trim();
-                    return `${speaker} ${text}`;
-                }).join('\n');
-
-                // Copy to clipboard
+            const bufferText = liveBufferContent.value.trim();
+            if (hasUserTyped && bufferText) {
+                // If user has typed, send the text as a prompt
+                sendInputAsPrompt();
+            } else {
+                // Otherwise, capture the live transcript buffer as a segment
+                const server = serverInput.value || 'localhost';
                 try {
-                    await navigator.clipboard.writeText(bufferText);
-                    console.log('Transcript copied to clipboard');
-                } catch (err) {
-                    console.error('Failed to copy to clipboard:', err);
+                    const response = await fetch(`http://${server}:5000/api/transcript/capture`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        console.log('Transcript capture command sent successfully');
+                    }
+                } catch (error) {
+                    console.error('Error sending transcript capture command:', error);
                 }
             }
+        }
 
-            // Call the API to capture the current live buffer as a segment
-            const server = serverInput.value || 'localhost';
-            try {
-                const response = await fetch(`http://${server}:5000/api/transcript/capture`, {
-                    method: 'POST'
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    console.log('Transcript capture command sent successfully');
-                }
-            } catch (error) {
-                console.error('Error sending transcript capture command:', error);
+        function sendInputAsPrompt() {
+            const promptText = liveBufferContent.value.trim();
+            if (!promptText) return;
+
+            console.log('Sending custom text as prompt to Gemini...');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const message = {
+                    type: 'analyze_text_prompt', // A new message type for text-only analysis
+                    prompt: promptText
+                };
+                ws.send(JSON.stringify(message));
+                showNotification('✓ Prompt sent to Gemini!');
+
+                // Clear the input area after sending
+                liveBufferContent.value = '';
+                liveBufferContent.placeholder = 'Live transcript appears here. You can also type a prompt and press Enter to send.';
+                hasUserTyped = false;
+            } else {
+                console.error('WebSocket not connected. Cannot send prompt.');
+                showNotification('❌ WebSocket not connected.');
             }
         }
 

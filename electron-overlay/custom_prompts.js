@@ -9,31 +9,36 @@ const DEFAULT_PROMPTS = [
         id: 'default-1',
         icon: '📄',
         label: 'Review Latest Question',
-        prompt: 'Look at my latest captured transcript segment and help me craft a strong answer to the interviewer\'s question.'
+        prompt: 'Look at my latest captured transcript segment and help me craft a strong answer to the interviewer\'s question.',
+        action: 'copy'
     },
     {
         id: 'default-2',
         icon: '📚',
         label: 'Review All Segments',
-        prompt: 'Review all my captured transcript segments and give me feedback on how the interview is going so far.'
+        prompt: 'Review all my captured transcript segments and give me feedback on how the interview is going so far.',
+        action: 'copy'
     },
     {
         id: 'default-3',
         icon: '📸',
         label: 'Capture & Analyze code',
-        prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing'
+        prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing',
+        action: 'capture'
     },
     {
         id: 'default-4',
         icon: '🎯',
         label: 'Capture & find issues',
-        prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list'
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list',
+        action: 'capture'
     },
     {
         id: 'default-5',
         icon: '💡',
         label: 'Capture & suggest improvements',
-        prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list'
+        prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list',
+        action: 'capture'
     },
 ];
 
@@ -75,12 +80,13 @@ class CustomPromptsManager {
     }
 
     // Add a new prompt
-    addPrompt(icon, label, prompt) {
+    addPrompt(icon, label, prompt, action) {
         const newPrompt = {
             id: 'custom-' + Date.now(),
             icon: icon || '📝',
             label: label,
-            prompt: prompt
+            prompt: prompt,
+            action: action || 'copy'
         };
         this.prompts.push(newPrompt);
         this.savePrompts();
@@ -88,14 +94,15 @@ class CustomPromptsManager {
     }
 
     // Update an existing prompt
-    updatePrompt(id, icon, label, prompt) {
+    updatePrompt(id, icon, label, prompt, action) {
         const index = this.prompts.findIndex(p => p.id === id);
         if (index !== -1) {
             this.prompts[index] = {
                 id: id,
                 icon: icon || '📝',
                 label: label,
-                prompt: prompt
+                prompt: prompt,
+                action: action || 'copy'
             };
             this.savePrompts();
             return true;
@@ -149,7 +156,7 @@ function renderPrompts() {
                 <div class="prompt-text">${escapeHtml(prompt.prompt)}</div>
             </div>
             <div class="prompt-actions">
-                <button class="prompt-action-btn copy-btn" onclick="copyPromptText('${prompt.id}')" title="Copy to clipboard">
+                <button class="prompt-action-btn copy-btn" onclick="handlePromptClick('${prompt.id}')" title="Send prompt to Gemini">
                     📋
                 </button>
                 <button class="prompt-action-btn edit-btn" onclick="editPrompt('${prompt.id}')" title="Edit">
@@ -176,26 +183,30 @@ function togglePrompts() {
     }
 }
 
-async function copyPromptText(id) {
+async function handlePromptClick(id) {
     const prompt = promptsManager.getPrompt(id);
-    if (!prompt) {
-        return;
-    }
+    if (!prompt) return;
 
-    // Special handling for the screenshot prompt
-    if (prompt.id === 'default-3') { // This is the 'Capture & Analyze Screen' prompt
-        console.log('Triggering screenshot for analysis...');
-        // The actual logic will be handled by the 'screenshot-captured' event listener in overlay.html
-        // We just need to store the prompt text and start the capture.
+    if (prompt.action === 'capture') {
+        // New "Capture" behavior
+        console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
+        // Store the prompt text so the capture handler can find it
         window.sessionStorage.setItem('analysisPrompt', prompt.prompt);
+        // Start the screenshot process
         window.electronAPI.startScreenshot();
     } else {
-        try {
-            await navigator.clipboard.writeText(prompt.prompt);
-            showNotification('✓ Prompt Copied!');
-        } catch (err) {
-            console.error('Failed to copy prompt:', err);
-            showNotification('❌ Failed to copy prompt');
+        // New "Send Text" behavior for prompts with 'copy' action
+        console.log(`Sending text prompt: "${prompt.label}"`);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const message = {
+                type: 'analyze_text_prompt',
+                prompt: prompt.prompt
+            };
+            ws.send(JSON.stringify(message));
+            showNotification('✓ Prompt sent to Gemini!');
+        } else {
+            console.error('WebSocket not connected. Cannot send prompt.');
+            showNotification('❌ WebSocket not connected.');
         }
     }
 }
@@ -233,11 +244,13 @@ function showPromptModal(prompt) {
     const iconInput = document.getElementById('promptIcon');
     const labelInput = document.getElementById('promptLabel');
     const promptInput = document.getElementById('promptText');
+    const actionInput = document.getElementById('promptAction');
 
     modalTitle.textContent = isEdit ? '✏️ Edit Prompt' : '➕ Add New Prompt';
     iconInput.value = isEdit ? prompt.icon : '📝';
     labelInput.value = isEdit ? prompt.label : '';
     promptInput.value = isEdit ? prompt.prompt : '';
+    actionInput.value = isEdit ? prompt.action : 'copy';
 
     modal.dataset.editId = isEdit ? prompt.id : '';
     modal.classList.add('show');
@@ -253,6 +266,7 @@ function savePromptFromModal() {
     const icon = document.getElementById('promptIcon').value.trim() || '📝';
     const label = document.getElementById('promptLabel').value.trim();
     const prompt = document.getElementById('promptText').value.trim();
+    const action = document.getElementById('promptAction').value;
 
     if (!label) {
         alert('Please enter a label for the prompt');
@@ -267,11 +281,11 @@ function savePromptFromModal() {
     const editId = modal.dataset.editId;
     if (editId) {
         // Edit existing
-        promptsManager.updatePrompt(editId, icon, label, prompt);
+        promptsManager.updatePrompt(editId, icon, label, prompt, action);
         showNotification('✓ Prompt updated');
     } else {
         // Add new
-        promptsManager.addPrompt(icon, label, prompt);
+        promptsManager.addPrompt(icon, label, prompt, action);
         showNotification('✓ Prompt added');
     }
 
