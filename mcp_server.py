@@ -29,6 +29,7 @@ server = Server("voice-to-code")
 # Paths to transcript and screenshot files
 LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
+PROMPT_QUEUE_FILE = GENERATED_CODE_DIR / ".prompt_queue.json"
 
 
 @server.list_resources()
@@ -192,6 +193,15 @@ async def handle_list_tools() -> list[Tool]:
                 "required": ["filename"],
             },
         ),
+        Tool(
+            name="check_prompt_queue",
+            description="Check for pending screenshot analysis requests. Returns any queued prompts with their associated screenshots. Call this periodically or when notified of new captures.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
     ]
 
 
@@ -299,6 +309,77 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 TextContent(
                     type="text",
                     text=f"Screenshot not found: {filename}",
+                )
+            ]
+
+    elif name == "check_prompt_queue":
+        # Check for queued screenshot analysis requests
+        if not PROMPT_QUEUE_FILE.exists():
+            return [
+                TextContent(
+                    type="text",
+                    text="No pending screenshot analysis requests.",
+                )
+            ]
+
+        try:
+            with open(PROMPT_QUEUE_FILE, 'r', encoding='utf-8') as f:
+                queue = json.load(f)
+
+            if not queue or len(queue) == 0:
+                # Empty queue, delete file
+                PROMPT_QUEUE_FILE.unlink()
+                return [
+                    TextContent(
+                        type="text",
+                        text="No pending screenshot analysis requests.",
+                    )
+                ]
+
+            # Get the first item from queue
+            item = queue.pop(0)
+            prompt_text = item.get('prompt', '')
+            filename = item.get('filename', '')
+            timestamp = item.get('timestamp', '')
+
+            # Update queue file (remove processed item)
+            if len(queue) == 0:
+                PROMPT_QUEUE_FILE.unlink()
+            else:
+                with open(PROMPT_QUEUE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(queue, f, indent=2)
+
+            # Load the screenshot
+            screenshot_path = SCREENSHOTS_DIR / filename
+            if not screenshot_path.exists():
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Screenshot file not found: {filename}",
+                    )
+                ]
+
+            with open(screenshot_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            # Return the prompt text and the screenshot
+            return [
+                TextContent(
+                    type="text",
+                    text=f"📸 New screenshot analysis request:\n\n{prompt_text}\n\nScreenshot: {filename}\nCaptured at: {timestamp}",
+                ),
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
+
+        except Exception as e:
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error reading prompt queue: {str(e)}",
                 )
             ]
 

@@ -1747,11 +1747,26 @@
 
             if (dataUrl) { // Check if the dataUrl property exists and is not null
                 console.log('Screenshot captured, saving to file...');
-                const saveResult = await window.electronAPI.saveScreenshotData(dataUrl);
+
+                // Retrieve the stored analysis prompt from sessionStorage
+                const analysisPrompt = window.sessionStorage.getItem('analysisPrompt');
+
+                // Save screenshot with optional prompt metadata
+                const saveResult = await window.electronAPI.saveScreenshotData(dataUrl, analysisPrompt);
 
                 if (saveResult.success) {
                     console.log(`File saved at: ${saveResult.path}`);
-                    showNotification('✓ Screenshot Captured!');
+
+                    // If there was a prompt, it was queued for MCP analysis
+                    if (analysisPrompt) {
+                        showNotification('✓ Queued for Claude Analysis!');
+                        console.log('Added screenshot + prompt to MCP queue');
+
+                        // Clear the stored prompt after use
+                        window.sessionStorage.removeItem('analysisPrompt');
+                    } else {
+                        showNotification('✓ Screenshot Captured!');
+                    }
                 } else {
                     console.error('Failed to save screenshot:', saveResult.error);
                     showNotification('❌ Failed to save screenshot.');

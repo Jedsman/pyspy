@@ -17,6 +17,12 @@
 ✅ ITERATION 4: Port custom prompts enhancements (action types)
   ✅ Test: Verify custom prompts UI works (edit, add, delete)
   ✅ Test: Verify 'capture' action triggers screenshot workflow
+  ✅ Enhancement: Fully automated MCP prompt queue system
+    - Saves prompt as .txt file alongside screenshot
+    - Writes to .prompt_queue.json for MCP processing
+    - MCP server's check_prompt_queue tool returns queued prompts with screenshots
+    - User tells Claude "check prompt queue" and Claude auto-responds to the analysis request
+    - Clears sessionStorage after use
 
 ## Parked for Later
 
@@ -52,3 +58,28 @@ System Architecture:
 - Z:\ on PC2 maps to generated_code folder on PC1
 - Screenshots saved to Z:\screenshots, accessible by both machines
 - MCP server exposes screenshots to Claude Desktop via view_screenshot tool
+- Automated prompt queue system for one-click screenshot analysis
+
+## Automated Screenshot Analysis Workflow
+
+**One-Click Screenshot Analysis:**
+
+1. User clicks a "capture" action prompt (e.g., "Capture & Analyze Code") in Electron overlay
+2. User selects screen area
+3. Electron saves screenshot + prompt to:
+   - `capture-{timestamp}.png` - the screenshot
+   - `capture-{timestamp}.txt` - the prompt metadata
+   - `.prompt_queue.json` - adds entry to MCP queue
+4. Notification: "✓ Queued for Claude Analysis!"
+5. In Claude Desktop, user says: "check prompt queue"
+6. Claude calls `check_prompt_queue` MCP tool
+7. Tool returns the queued prompt text + screenshot image
+8. Claude automatically analyzes the screenshot according to the prompt
+9. Queue entry is removed after processing
+
+**Benefits:**
+- Single click to capture + queue analysis
+- No copy/paste needed
+- No manual tool calls needed
+- Claude receives both prompt and image in one request
+- Multiple captures can be queued and processed sequentially

@@ -18,8 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onScreenshotCaptured: (callback) => {
     ipcRenderer.on('screenshot-captured', (event, data) => callback(data));
   },
-  saveScreenshotData: (dataUrl) => {
-    return ipcRenderer.invoke('save-screenshot-data', dataUrl);
+  saveScreenshotData: (dataUrl, promptText) => {
+    return ipcRenderer.invoke('save-screenshot-data', dataUrl, promptText);
   }
 });
 

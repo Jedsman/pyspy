@@ -149,7 +149,7 @@ ipcMain.on('close-screenshot', async (event, selection) => {
 });
 
 // 3. Save the captured data URL to a file
-ipcMain.handle('save-screenshot-data', async (event, dataUrl) => {
+ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText) => {
   try {
     // Use the path from the .env file, or a default if not provided.
     const screenshotsDir = process.env.SCREENSHOT_PATH || path.join(__dirname, '..', 'generated_code', 'screenshots');
@@ -164,6 +164,31 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl) => {
     const data = Buffer.from(dataUrl.split(',')[1], 'base64');
 
     fs.writeFileSync(filePath, data);
+
+    // If promptText is provided, save it as a .txt metadata file AND add to prompt queue
+    if (promptText) {
+      const metadataFileName = `capture-${timestamp}.txt`;
+      const metadataFilePath = path.join(screenshotsDir, metadataFileName);
+      fs.writeFileSync(metadataFilePath, promptText, 'utf-8');
+      console.log(`Saved prompt metadata: ${metadataFileName}`);
+
+      // Add to MCP prompt queue for automated analysis
+      const queueFilePath = path.join(screenshotsDir, '..', '.prompt_queue.json');
+      let queue = [];
+      if (fs.existsSync(queueFilePath)) {
+        const queueData = fs.readFileSync(queueFilePath, 'utf-8');
+        queue = JSON.parse(queueData);
+      }
+
+      queue.push({
+        filename: fileName,
+        prompt: promptText,
+        timestamp: new Date().toISOString()
+      });
+
+      fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
+      console.log(`Added to MCP prompt queue: ${fileName}`);
+    }
 
     return { success: true, fileName: fileName, path: filePath }; // Return both for flexibility
   } catch (error) {
