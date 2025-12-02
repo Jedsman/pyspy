@@ -1133,6 +1133,7 @@
         const codeContainer = document.getElementById('codeContainer');
         const transcriptContent = document.getElementById('transcriptContent');
         const liveBufferContent = document.getElementById('liveBufferContent');
+        let hasUserTyped = false;
         const bgOpacitySlider = document.getElementById('bgOpacitySlider');
         const bgOpacityValue = document.getElementById('bgOpacityValue');
         const textOpacitySlider = document.getElementById('textOpacitySlider');
@@ -1788,7 +1789,7 @@
             if (ws && ws.readyState === WebSocket.OPEN) {
                 const message = {
                     type: 'analyze_text_prompt', // A new message type for text-only analysis
-                    prompt: promptText
+                    prompt: promptText + '\n\n' + MARKDOWN_SYSTEM_PROMPT
                 };
                 ws.send(JSON.stringify(message));
                 showNotification('✓ Prompt sent to Gemini!');
@@ -1802,6 +1803,19 @@
                 showNotification('❌ WebSocket not connected.');
             }
         }
+
+        // Listen for Enter key in live buffer to send prompt
+        liveBufferContent.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && hasUserTyped) {
+                e.preventDefault();
+                sendInputAsPrompt();
+            }
+        });
+
+        // Track when user has typed in the buffer
+        liveBufferContent.addEventListener('input', () => {
+            hasUserTyped = true;
+        });
 
         // Screenshot selection functionality
         let screenshotState = {
