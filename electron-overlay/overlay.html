@@ -1140,6 +1140,13 @@
 
         let syncMode = false;
 
+        // Initialize server input with default IP from environment
+        if (window.electronAPI && window.electronAPI.getDefaultServerIp) {
+            window.electronAPI.getDefaultServerIp().then(ip => {
+                serverInput.value = ip;
+            });
+        }
+
         // Click-through functionality: Track mouse position
         // When mouse is over interactive elements (titlebar, header, tabs), allow interaction
         // When mouse is over code display area, enable click-through

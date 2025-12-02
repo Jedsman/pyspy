@@ -144,6 +144,10 @@ ipcMain.on('open-transcript-window', () => {
     createTranscriptWindow();
 });
 
+ipcMain.handle('get-default-server-ip', () => {
+    return process.env.DEFAULT_SERVER_IP || 'localhost';
+});
+
 // --- Screenshot Flow ---
 
 // 1. Start the screenshot process

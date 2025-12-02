@@ -3,7 +3,8 @@
     "allow": [
       "Bash(uv run:*)",
       "Bash(uv sync:*)",
-      "Bash(uv pip install:*)"
+      "Bash(uv pip install:*)",
+      "Bash(python -c:*)"
     ],
     "deny": [],
     "ask": []
