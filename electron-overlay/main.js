@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const screenshot = require('screenshot-desktop');
+const sharp = require('sharp');
 // Load environment variables from .env file in the same directory as main.js
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -193,36 +195,55 @@ ipcMain.on('close-screenshot', async (event, selection) => {
     }
 
     try {
-        // Get all available desktop sources (screens)
-        const sources = await desktopCapturer.getSources({
-            types: ['screen'],
-            thumbnailSize: screen.getPrimaryDisplay().size // Capture at full resolution
-        });
-
-        // Find the source for the primary display.
+        // Get the primary display dimensions and DPI
         const primaryDisplay = screen.getPrimaryDisplay();
-        const primarySource = sources.find(source => source.display_id === primaryDisplay.id.toString());
+        const { width: logicalWidth, height: logicalHeight } = primaryDisplay.size;
+        const scaleFactor = primaryDisplay.scaleFactor;
 
-        if (!primarySource) {
-            throw new Error('Primary display source not found.');
-        }
+        console.log(`📸 Display: logical=${logicalWidth}x${logicalHeight}, DPI scale=${scaleFactor}`);
+        console.log(`📸 Selection: x=${selection.x}, y=${selection.y}, width=${selection.width}, height=${selection.height}`);
 
-        // Crop the full-screen thumbnail to the user's selection.
-        const croppedImage = primarySource.thumbnail.crop(selection);
-        const dataUrl = croppedImage.toDataURL();
+        // Capture full screen at native resolution
+        const fullScreenBuffer = await screenshot();
+        console.log(`📸 Full screen captured: ${(fullScreenBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
-        // NOW, after the capture is complete, show the main window.
+        // Calculate native resolution coordinates from logical coordinates
+        const nativeX = Math.round(selection.x * scaleFactor);
+        const nativeY = Math.round(selection.y * scaleFactor);
+        const nativeWidth = Math.round(selection.width * scaleFactor);
+        const nativeHeight = Math.round(selection.height * scaleFactor);
+
+        console.log(`📸 Cropping at native resolution: ${nativeWidth}x${nativeHeight} at (${nativeX}, ${nativeY})`);
+
+        // Crop and convert to PNG with text-optimized settings
+        const croppedBuffer = await sharp(fullScreenBuffer)
+            .extract({
+                left: nativeX,
+                top: nativeY,
+                width: nativeWidth,
+                height: nativeHeight
+            })
+            .sharpen()  // Enhance text clarity and edges
+            .png({
+                compressionLevel: 9,      // Maximum compression for smaller files
+                adaptiveFiltering: true   // Better quality at high compression
+            })
+            .toBuffer();
+
+        console.log(`📸 Cropped image: ${(croppedBuffer.length / 1024).toFixed(2)} KB`);
+
+        const croppedBase64 = croppedBuffer.toString('base64');
+        const dataUrl = `data:image/png;base64,${croppedBase64}`;
+
+        // Show main window and send result
         if (mainWindow) {
             mainWindow.show();
         }
 
-        // Send the captured image data back to the main window's renderer.
-        // Also include the original selection rectangle for context.
         mainWindow.webContents.send('screenshot-captured', { dataUrl, selection });
 
     } catch (e) {
-        console.error('Failed to capture screen:', e);
-        // Ensure the main window is shown even if capture fails.
+        console.error('❌ Screenshot capture failed:', e.message);
         if (mainWindow) mainWindow.show();
         mainWindow.webContents.send('screenshot-captured', { dataUrl: null });
     }
