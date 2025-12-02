@@ -686,6 +686,9 @@ class VoiceToCodeSystem:
         # Live transcript buffer for manual capture
         self.live_transcript_buffer = []
 
+        # Flag to track if transcript window is open (for manual mode)
+        self.transcript_window_open = False
+
         # Spinner for listening indicator
         self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
         self.spinner_index = 0
@@ -811,6 +814,14 @@ class VoiceToCodeSystem:
                 if text:
                     print(f"\n🧠 Remote Gemini Coach Request command received!")
                     self.handle_gemini_coach_request(text)
+
+            elif command == "transcript_window_opened":
+                print(f"\n📄 Transcript window opened - switching to manual mode")
+                self.transcript_window_open = True
+
+            elif command == "transcript_window_closed":
+                print(f"\n📄 Transcript window closed - switching to auto mode")
+                self.transcript_window_open = False
 
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
@@ -1340,34 +1351,45 @@ class VoiceToCodeSystem:
             if transcript:
                 labeled_transcript = f"[{source}]: {transcript}"
 
-                # Add to live transcript buffer
-                self.live_transcript_buffer.append({
-                    "speaker": source,
-                    "text": transcript,
-                    "timestamp": datetime.now().isoformat()
-                })
-                # Send updated buffer to overlay
-                self.send_live_transcript_buffer()
-
                 if self.transcript_only:
                     print(f"\n📝 {labeled_transcript}")
                 elif self.coach_mode:
-                    # Coach mode: Generate suggestions when interviewer speaks
                     print(f"\n📝 {labeled_transcript}")
 
-                    if source == "Partner":  # Interviewer question
-                        self.interview_coach.add_to_conversation("Interviewer", transcript)
-                        suggestions = self.interview_coach.generate_suggestions(transcript)
+                    # Check if transcript window is open (manual mode)
+                    if self.transcript_window_open:
+                        # Manual mode: Send as transcript segment, don't auto-generate
+                        self.send_transcript_segment(source, transcript)
 
-                        # Display suggestions to console
-                        print("\n💡 Suggested Response:")
-                        for i, suggestion in enumerate(suggestions, 1):
-                            print(f"   {i}. {suggestion}")
+                        # Add to conversation history
+                        if source == "Partner":
+                            self.interview_coach.add_to_conversation("Interviewer", transcript)
+                        else:
+                            self.interview_coach.add_to_conversation("You", transcript)
+                    else:
+                        # Auto mode: Use live buffer and auto-generate suggestions
+                        # Add to live transcript buffer
+                        self.live_transcript_buffer.append({
+                            "speaker": source,
+                            "text": transcript,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        # Send updated buffer to overlay
+                        self.send_live_transcript_buffer()
 
-                        # Send to web server for overlay display
-                        self.send_coach_suggestions(transcript, suggestions)
-                    else:  # Candidate response
-                        self.interview_coach.add_to_conversation("You", transcript)
+                        if source == "Partner":  # Interviewer question
+                            self.interview_coach.add_to_conversation("Interviewer", transcript)
+                            suggestions = self.interview_coach.generate_suggestions(transcript)
+
+                            # Display suggestions to console
+                            print("\n💡 Suggested Response:")
+                            for i, suggestion in enumerate(suggestions, 1):
+                                print(f"   {i}. {suggestion}")
+
+                            # Send to web server for overlay display
+                            self.send_coach_suggestions(transcript, suggestions)
+                        else:  # Candidate response
+                            self.interview_coach.add_to_conversation("You", transcript)
                 else:
                     # Code generation mode
                     # Always add the full transcript to context first

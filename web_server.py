@@ -782,6 +782,20 @@ async def capture_transcript():
         return {"status": "error", "message": str(e)}
 
 
+@app.post("/api/command/transcript_window")
+async def transcript_window_command(request: dict):
+    """Handle transcript window open/close commands"""
+    try:
+        command = request.get('command', '')
+        if command in ['transcript_window_opened', 'transcript_window_closed']:
+            COMMAND_FILE.write_text(command)
+            return {"status": "success", "command": command}
+        else:
+            return {"status": "error", "message": "Invalid command"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.post("/api/screenshot/area")
 async def capture_screenshot_area(request: dict):
     """Capture a selected area of the screen"""

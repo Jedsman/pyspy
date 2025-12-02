@@ -1,12 +1,44 @@
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 // Load environment variables from .env file in the same directory as main.js
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let screenshotWindow;
 let transcriptWindow;
+
+// Helper function to send commands to the backend via HTTP
+function sendCommandToBackend(command) {
+    const postData = JSON.stringify({ command: command });
+
+    const options = {
+        hostname: 'localhost',
+        port: 5000,
+        path: '/api/command/transcript_window',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+
+    const req = http.request(options, (res) => {
+        if (res.statusCode === 200) {
+            console.log(`Command '${command}' sent successfully`);
+        } else {
+            console.log(`Failed to send command '${command}': ${res.statusCode}`);
+        }
+    });
+
+    req.on('error', (e) => {
+        console.error(`Error sending command '${command}':`, e.message);
+    });
+
+    req.write(postData);
+    req.end();
+}
 
 function createTranscriptWindow() {
     if (transcriptWindow) {
@@ -27,7 +59,14 @@ function createTranscriptWindow() {
     transcriptWindow.loadFile('transcription_window.html');
     // transcriptWindow.webContents.openDevTools({ mode: 'detach' });
 
+    // Notify backend that transcript window is opened
+    transcriptWindow.once('ready-to-show', () => {
+        sendCommandToBackend('transcript_window_opened');
+    });
+
     transcriptWindow.on('closed', () => {
+        // Notify backend that transcript window is closed
+        sendCommandToBackend('transcript_window_closed');
         transcriptWindow = null;
     });
 }
