@@ -6,6 +6,31 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let screenshotWindow;
+let transcriptWindow;
+
+function createTranscriptWindow() {
+    if (transcriptWindow) {
+        transcriptWindow.focus();
+        return;
+    }
+
+    transcriptWindow = new BrowserWindow({
+        width: 400,
+        height: 700,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
+
+    transcriptWindow.loadFile('transcription_window.html');
+    // transcriptWindow.webContents.openDevTools({ mode: 'detach' });
+
+    transcriptWindow.on('closed', () => {
+        transcriptWindow = null;
+    });
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -56,6 +81,10 @@ ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
     if (mainWindow) {
         mainWindow.setIgnoreMouseEvents(ignore, options);
     }
+});
+
+ipcMain.on('open-transcript-window', () => {
+    createTranscriptWindow();
 });
 
 // --- Screenshot Flow ---

@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('screenshot-captured', (event, data) => callback(data));
   },
   // Expose the new save function
-  saveScreenshotData: (dataUrl) => ipcRenderer.invoke('save-screenshot-data', dataUrl)
+  saveScreenshotData: (dataUrl) => ipcRenderer.invoke('save-screenshot-data', dataUrl),
+  openTranscriptWindow: () => ipcRenderer.send('open-transcript-window')
 });

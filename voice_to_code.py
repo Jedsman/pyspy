@@ -806,6 +806,12 @@ class VoiceToCodeSystem:
                 if prompt:
                     self.analyze_text_with_gemini(prompt)
 
+            elif command == "gemini_coach_request":
+                text = command_data.get("text", "")
+                if text:
+                    print(f"\n🧠 Remote Gemini Coach Request command received!")
+                    self.handle_gemini_coach_request(text)
+
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
             pass
@@ -1221,6 +1227,38 @@ class VoiceToCodeSystem:
             import traceback
             traceback.print_exc()
             self.send_coach_suggestions(prompt, [error_message])
+
+    def handle_gemini_coach_request(self, text: str):
+        """
+        Handles a request from the transcript window to get suggestions for a given text.
+        """
+        print(f"🤖 Handling Gemini coach request...")
+        print(f"   Text: \"{text[:100]}...\"")
+
+        # Immediately send a loading state to the UI
+        self.send_coach_suggestions(text, ["Analyzing with Gemini..."], status="loading")
+
+        # Run the analysis in a separate thread to avoid blocking
+        analysis_thread = threading.Thread(target=self._perform_gemini_coach_request_in_thread, args=(text,))
+        analysis_thread.start()
+
+    def _perform_gemini_coach_request_in_thread(self, text: str):
+        """
+        Helper function to run the blocking Gemini API call for a coach request in a separate thread.
+        """
+        try:
+            if not self.interview_coach:
+                self.interview_coach = InterviewCoach()
+
+            suggestions = self.interview_coach.generate_suggestions(text)
+            self.send_coach_suggestions(text, suggestions)
+
+        except Exception as e:
+            error_message = f"An unexpected error occurred during coach request: {e}"
+            print(f"❌ {error_message}")
+            import traceback
+            traceback.print_exc()
+            self.send_coach_suggestions(text, [error_message])
 
     def process_transcript_for_commands(self, transcript_text: str):
         """Check transcript for keywords to edit or close a file."""

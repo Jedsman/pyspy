@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interviewer Transcript</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        #transcript-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        .transcript-box {
+            border: 1px solid #444;
+            background: #2a2a2a;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .transcript-text {
+            margin-bottom: 10px;
+        }
+        .transcript-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Interviewer Transcript</h2>
+
+    <div id="transcript-container">
+        <!-- Transcript boxes will be inserted here -->
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectTimer = null;
+        const transcriptContainer = document.getElementById('transcript-container');
+
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+
+            ws = new WebSocket('ws://localhost:5000/ws');
+
+            ws.onopen = () => {
+                console.log('Transcript window connected to WebSocket.');
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'transcript' && data.speaker === 'Partner') {
+                        addTranscriptBox(data.text);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected. Attempting to reconnect...');
+                if (!reconnectTimer) {
+                    reconnectTimer = setTimeout(connect, 3000);
+                }
+            };
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function addTranscriptBox(text) {
+            const box = document.createElement('div');
+            box.className = 'transcript-box';
+
+            const textElement = document.createElement('div');
+            textElement.className = 'transcript-text';
+            textElement.textContent = text;
+
+            const controls = document.createElement('div');
+            controls.className = 'transcript-controls';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+
+            const sendButton = document.createElement('button');
+            sendButton.textContent = 'Send to Gemini';
+            sendButton.onclick = () => sendToGemini(box);
+
+            const leftGroup = document.createElement('div');
+            leftGroup.appendChild(checkbox);
+            leftGroup.appendChild(document.createTextNode(' Include'));
+            
+            controls.appendChild(leftGroup);
+            controls.appendChild(sendButton);
+
+            box.appendChild(textElement);
+            box.appendChild(controls);
+
+            transcriptContainer.appendChild(box);
+            transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+        }
+
+        function sendToGemini(currentBox) {
+            let combinedText = '';
+            const allBoxes = transcriptContainer.querySelectorAll('.transcript-box');
+            
+            // First, get text from all checked boxes
+            allBoxes.forEach(box => {
+                const checkbox = box.querySelector('input[type="checkbox"]');
+                if (checkbox.checked) {
+                    const text = box.querySelector('.transcript-text').textContent;
+                    combinedText += text + '\n\n';
+                }
+            });
+
+            // Add the text from the current box if it wasn't already included
+            const currentCheckbox = currentBox.querySelector('input[type="checkbox"]');
+            if (!currentCheckbox.checked) {
+                const text = currentBox.querySelector('.transcript-text').textContent;
+                combinedText += text;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'gemini_coach_request',
+                    text: combinedText.trim()
+                }));
+
+                // Reset all checkboxes
+                allBoxes.forEach(box => {
+                    const checkbox = box.querySelector('input[type="checkbox"]');
+                    checkbox.checked = false;
+                });
+            } else {
+                console.error('WebSocket not connected.');
+                alert('Error: Not connected to the server. Cannot send request.');
+            }
+        }
+
+        // Initial connection
+        connect();
+    </script>
+
+</body>
+</html>

@@ -946,6 +946,7 @@
                 <button onclick="sendGenerate()" style="background: #4caf50; margin-left: 10px;">🆕 New</button>
                 <button onclick="sendUpdate()" style="background: #ff9800;">💾 Update</button>
                 <button id="modeToggleBtn" onclick="toggleMode()" style="background: #9c27b0;" title="Toggle between Code and Coach mode">🔄 <span id="currentMode">Code</span></button>
+                <button onclick="openTranscriptWindow()" title="Open Transcript Window">📄</button>
                 <div class="opacity-control">
                     <label>BG:</label>
                     <input type="range" id="bgOpacitySlider" min="0" max="90" value="50" step="5">
@@ -1793,6 +1794,10 @@
                 }
             }
         });
+
+        function openTranscriptWindow() {
+            window.electronAPI.openTranscriptWindow();
+        }
 
         // Connect on load
         connect();

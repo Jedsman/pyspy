@@ -880,6 +880,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     COMMAND_FILE.write_text(json.dumps(command_data))
                     print(f"✅ Relayed 'analyze_text_prompt' command.")
 
+                elif message_type == 'gemini_coach_request':
+                    text = data.get('text', '')
+                    if text:
+                        command_data = {
+                            "command": "gemini_coach_request",
+                            "text": text
+                        }
+                        COMMAND_FILE.write_text(json.dumps(command_data))
+                        print(f"✅ Relayed 'gemini_coach_request' command.")
+
             except json.JSONDecodeError:
                 print(f"Received non-JSON message: {message_text}")
             except Exception as e:

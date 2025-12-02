@@ -95,3 +95,6 @@ Simulate a Gemini API failure (e.g., by temporarily invalidating the API key or 
 Verify that the Electron app displays an appropriate error message to the user.
 Test 6.2: User Experience Test.
 Perform the full workflow multiple times, observing the loading states and overall responsiveness.
+
+
+In the Electron app, in coach mode,I want a new option for continous transcribing. I want the interviewer speech to be captured and listed in a new window. I want the transcribed speech seperated into boxes by pauses in the speech. Each box should have a button to send the transcript to gemini for a response. Each box should also have a tick box, so that the current box and selected boxes are all sent at once. Once sent, the tick boxes should be reset
