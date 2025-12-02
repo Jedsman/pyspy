@@ -3,41 +3,44 @@
  * Manages user-defined prompts with persistent localStorage storage
  */
 
+// System prompt appended to all prompts
+const MARKDOWN_SYSTEM_PROMPT = 'Your response should be very short and concise and easy to read. **IMPORTANT: Format your entire response using Markdown. Use proper Markdown syntax for headings, bold, italics, lists, and code blocks. All code snippets must be wrapped in triple backticks with the language identifier (e.g., ```python, ```javascript, etc.).**';
+
 // Default prompts that come pre-loaded
 const DEFAULT_PROMPTS = [
     {
         id: 'default-1',
         icon: '🤔',
         label: 'Explain This Code',
-        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Explain in simple, easy-to-understand terms what the code is doing, its main purpose, and how it works. Structure the explanation as a few clear bullet points.',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Explain in simple, easy-to-understand terms what the code is doing, its main purpose, and how it works. Structure the explanation as a few clear bullet points.',
         action: 'capture'
     },
     {
         id: 'default-2',
         icon: '🐞',
         label: 'Find Bugs',
-        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Identify potential bugs, logical errors, or race conditions. Provide a bullet-point list of the issues and explain clearly why each one is problematic.',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Identify potential bugs, logical errors, or race conditions. Show any issues found as comments in the code along with a solution. Very briefly explain why each one is problematic.',
         action: 'capture'
     },
     {
         id: 'default-3',
         icon: '✨',
         label: 'Suggest Improvements',
-        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Suggest 3-4 key improvements focusing on readability, performance, and best practices. Provide a bullet-point list of suggestions with brief justifications.',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Suggest 3-4 key improvements focusing on readability, performance, and best practices. Provide a bullet-point list of suggestions with brief justifications.',
         action: 'capture'
     },
     {
         id: 'default-4',
         icon: '♻️',
         label: 'Refactor This Code',
-        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Provide a refactored version of the code that is cleaner and more idiomatic. After the code block, briefly explain the key changes you made and why they are improvements.',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Provide a refactored version of the code that is cleaner and more idiomatic. After the code block, briefly explain the key changes you made and why they are improvements.',
         action: 'capture'
     },
     {
         id: 'default-5',
         icon: '🧪',
         label: 'Write Unit Tests',
-        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Write a concise set of unit tests for this code. Cover the main logic, at least two important edge cases, and provide comments explaining what each test case is verifying.',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Write a concise set of unit tests for this code. Cover the main logic, at least two important edge cases, and provide comments explaining what each test case is verifying.',
         action: 'capture'
     },
     {
@@ -232,11 +235,14 @@ async function handlePromptClick(id) {
     const prompt = promptsManager.getPrompt(id);
     if (!prompt) return;
 
+    // Append system prompt to ensure Markdown formatting
+    const fullPrompt = prompt.prompt + '\n\n' + MARKDOWN_SYSTEM_PROMPT;
+
     if (prompt.action === 'capture') {
         // New "Capture" behavior
         console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
         // Store the prompt text so the capture handler can find it
-        window.sessionStorage.setItem('analysisPrompt', prompt.prompt);
+        window.sessionStorage.setItem('analysisPrompt', fullPrompt);
         // Start the screenshot process
         window.electronAPI.startScreenshot();
     } else {
@@ -245,7 +251,7 @@ async function handlePromptClick(id) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             const message = {
                 type: 'analyze_text_prompt',
-                prompt: prompt.prompt
+                prompt: fullPrompt
             };
             ws.send(JSON.stringify(message));
             showNotification('✓ Prompt sent to Gemini!');
@@ -367,8 +373,8 @@ function applyAsSystemPrompt(promptId) {
         return;
     }
 
-    // Combine system prompt with selected transcripts
-    const combinedText = `${prompt.prompt}\n\n---\n\n${selectedTranscripts.join('\n\n')}`;
+    // Combine prompt with Markdown system prompt and selected transcripts
+    const combinedText = `${prompt.prompt}\n\n---\n\n${selectedTranscripts.join('\n\n')}\n\n${MARKDOWN_SYSTEM_PROMPT}`;
 
     console.log('Applying system prompt to selected transcripts...');
     if (ws && ws.readyState === WebSocket.OPEN) {

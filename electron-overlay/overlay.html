@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice-to-Code Overlay</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1536,9 +1537,16 @@
             const { content, language } = file;
             const languageClass = language !== 'text' ? `language-${language}` : '';
 
-            codeContainer.innerHTML = `
-                <pre class="line-numbers"><code class="${languageClass}">${escapeHtml(content)}</code></pre>
-            `;
+            // Parse Markdown if marked is available, otherwise display as code
+            let htmlContent;
+            if (typeof marked !== 'undefined' && language === 'markdown') {
+                htmlContent = marked.parse(content);
+                codeContainer.innerHTML = htmlContent;
+            } else {
+                codeContainer.innerHTML = `
+                    <pre class="line-numbers"><code class="${languageClass}">${escapeHtml(content)}</code></pre>
+                `;
+            }
 
             // Apply syntax highlighting with error handling
             try {
@@ -1597,13 +1605,19 @@
                     </div>
                 `;
             } else {
-                // Display suggestions in the code container
-                suggestionsHtml = suggestions.map((suggestion, index) =>
-                    `<div style="margin-bottom: 10px;">
-                        <span style="color: #4caf50; font-weight: bold;">${index + 1}.</span>
-                        <span style="color: #ffffff;">${escapeHtml(suggestion)}</span>
-                    </div>`
-                ).join('');
+                // Join suggestions and parse as Markdown
+                const suggestionsText = suggestions.join('\n');
+                if (typeof marked !== 'undefined') {
+                    suggestionsHtml = marked.parse(suggestionsText);
+                } else {
+                    // Fallback if marked is not available
+                    suggestionsHtml = suggestions.map((suggestion, index) =>
+                        `<div style="margin-bottom: 10px;">
+                            <span style="color: #4caf50; font-weight: bold;">${index + 1}.</span>
+                            <span style="color: #ffffff;">${escapeHtml(suggestion)}</span>
+                        </div>`
+                    ).join('');
+                }
             }
 
             codeContainer.innerHTML = `
@@ -1614,6 +1628,13 @@
                     ${suggestionsHtml}
                 </div>
             `;
+
+            // Apply syntax highlighting after rendering Markdown
+            try {
+                Prism.highlightAll();
+            } catch (e) {
+                console.error('Prism highlighting error:', e);
+            }
         }
 
         function addTranscriptSegment(speaker, text, timestamp) {
