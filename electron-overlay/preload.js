@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   saveScreenshotData: (dataUrl, promptText) => {
     return ipcRenderer.invoke('save-screenshot-data', dataUrl, promptText);
+  },
+  onSetDefaultServerIP: (callback) => {
+    ipcRenderer.on('set-default-server-ip', (event, ip) => callback(ip));
   }
 });
 

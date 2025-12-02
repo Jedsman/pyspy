@@ -1776,6 +1776,12 @@
             }
         });
 
+        // Listen for default server IP from main process
+        window.electronAPI.onSetDefaultServerIP((ip) => {
+            console.log(`Setting default server IP: ${ip}`);
+            serverInput.value = ip;
+        });
+
         // Connect on load
         connect();
     </script>

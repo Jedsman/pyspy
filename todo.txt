@@ -23,6 +23,11 @@
     - MCP server's check_prompt_queue tool returns queued prompts with screenshots
     - User tells Claude "check prompt queue" and Claude auto-responds to the analysis request
     - Clears sessionStorage after use
+  ✅ Enhancement: Configurable default server IP
+    - Added DEFAULT_SERVER_IP to electron-overlay/.env
+    - Main process sends default IP to renderer on load
+    - Server input field auto-populated with configured IP
+    - Allows easy multi-PC setup (e.g., set to PC1's IP on PC2)
 
 ## Parked for Later
 

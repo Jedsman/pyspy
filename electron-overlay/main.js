@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { Monitor } = require('node-screenshots');
 // Load environment variables from .env file in the same directory as main.js
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -42,6 +43,12 @@ function createWindow() {
 
   // Optional: Open DevTools for debugging
   mainWindow.webContents.openDevTools();
+
+  // Send default server IP to renderer once page is loaded
+  mainWindow.webContents.on('did-finish-load', () => {
+    const defaultServerIP = process.env.DEFAULT_SERVER_IP || 'localhost';
+    mainWindow.webContents.send('set-default-server-ip', defaultServerIP);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -113,23 +120,56 @@ ipcMain.on('close-screenshot', async (event, selection) => {
   }
 
   try {
-    // Get all available desktop sources (screens)
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: screen.getPrimaryDisplay().size // Capture at full resolution
-    });
-
-    // Find the source for the primary display.
+    // Get the primary display dimensions
     const primaryDisplay = screen.getPrimaryDisplay();
-    const primarySource = sources.find(source => source.display_id === primaryDisplay.id.toString());
+    const { width, height } = primaryDisplay.size;
 
-    if (!primarySource) {
-      throw new Error('Primary display source not found.');
-    }
+    console.log(`Display info: logical=${width}x${height}`);
+    console.log(`Selection: x=${selection.x}, y=${selection.y}, width=${selection.width}, height=${selection.height}`);
 
-    // Crop the full-screen thumbnail to the user's selection.
-    const croppedImage = primarySource.thumbnail.crop(selection);
-    const dataUrl = croppedImage.toDataURL();
+    // Use node-screenshots to capture the full screen at native resolution
+    // This uses Windows DXGI API directly for maximum quality
+    const monitors = Monitor.all();
+    const primaryMonitor = monitors[0]; // Get primary monitor
+
+    // Capture the entire screen at native resolution
+    const fullScreenImage = primaryMonitor.captureImageSync();
+
+    // Get the actual captured dimensions (width and height are properties, not methods)
+    const capturedWidth = fullScreenImage.width;
+    const capturedHeight = fullScreenImage.height;
+    console.log(`Captured at native resolution: ${capturedWidth}x${capturedHeight}`);
+
+    // Calculate the scale factor between logical and captured resolution
+    const scaleX = capturedWidth / width;
+    const scaleY = capturedHeight / height;
+
+    // Scale the selection rectangle to match the captured resolution
+    const scaledSelection = {
+      x: Math.round(selection.x * scaleX),
+      y: Math.round(selection.y * scaleY),
+      width: Math.round(selection.width * scaleX),
+      height: Math.round(selection.height * scaleY)
+    };
+
+    console.log(`Scaled selection: x=${scaledSelection.x}, y=${scaledSelection.y}, width=${scaledSelection.width}, height=${scaledSelection.height}`);
+
+    // Crop the image to the selected area (using synchronous method)
+    const croppedImage = fullScreenImage.cropSync(
+      scaledSelection.x,
+      scaledSelection.y,
+      scaledSelection.width,
+      scaledSelection.height
+    );
+
+    // Convert to PNG buffer (lossless quality)
+    const pngBuffer = croppedImage.toPngSync();
+
+    // Convert to base64 data URL
+    const base64Data = pngBuffer.toString('base64');
+    const pngDataUrl = `data:image/png;base64,${base64Data}`;
+
+    console.log(`Cropped image size: ${croppedImage.width}x${croppedImage.height}`);
 
     // NOW, after the capture is complete, show the main window.
     if (mainWindow) {
@@ -137,8 +177,7 @@ ipcMain.on('close-screenshot', async (event, selection) => {
     }
 
     // Send the captured image data back to the main window's renderer.
-    // Also include the original selection rectangle for context.
-    mainWindow.webContents.send('screenshot-captured', { dataUrl, selection });
+    mainWindow.webContents.send('screenshot-captured', { dataUrl: pngDataUrl, selection });
 
   } catch (e) {
     console.error('Failed to capture screen:', e);
