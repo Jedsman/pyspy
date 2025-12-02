@@ -1171,6 +1171,28 @@
         // This allows users to grab edges for resizing
         const EDGE_PADDING = 30;
 
+        // Helper function to check if mouse is over scrollbar
+        function isOverScrollbar(element, e) {
+            if (!element) return false;
+            const rect = element.getBoundingClientRect();
+
+            // Check if element has vertical scrollbar
+            const hasVerticalScroll = element.scrollHeight > element.clientHeight;
+            if (hasVerticalScroll) {
+                // Scrollbar is on the right side, typically 15-17px wide
+                const scrollbarWidth = 17;
+                const scrollbarLeft = rect.right - scrollbarWidth;
+
+                return (
+                    e.clientX >= scrollbarLeft &&
+                    e.clientX <= rect.right &&
+                    e.clientY >= rect.top &&
+                    e.clientY <= rect.bottom
+                );
+            }
+            return false;
+        }
+
         // Mouse move handler to toggle click-through
         document.addEventListener('mousemove', (e) => {
             // Check if mouse is near window edges (for resizing)
@@ -1185,8 +1207,11 @@
             // Check if the prompt modal is currently visible
             isModalShowing = promptModal && promptModal.classList.contains('show');
 
+            // Check if mouse is over scrollbar in code container
+            const overScrollbar = isOverScrollbar(codeContainer, e);
+
             // Check if mouse is over any interactive element
-            const overInteractive = nearEdge || interactiveElements.some(el => {
+            const overInteractive = nearEdge || overScrollbar || interactiveElements.some(el => {
                 if (!el) return false;
                 const rect = el.getBoundingClientRect();
                 return (
