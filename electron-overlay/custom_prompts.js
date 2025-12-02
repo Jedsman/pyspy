@@ -7,39 +7,81 @@
 const DEFAULT_PROMPTS = [
     {
         id: 'default-1',
-        icon: '📄',
-        label: 'Review Code Question',
-        prompt: 'Use the provided screenshot to analyse any questions about the code or code snippet present.',
-        action: 'copy'
+        icon: '🤔',
+        label: 'Explain This Code',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Explain in simple, easy-to-understand terms what the code is doing, its main purpose, and how it works. Structure the explanation as a few clear bullet points.',
+        action: 'capture'
     },
     {
         id: 'default-2',
-        icon: '📄',
-        label: 'Debug Code Question',
-        prompt: 'Use the provided screenshot to analyse the code present along with any info about the code. Provide a concise response detailing what is wrong and how to fix it.',
-        action: 'copy'
+        icon: '🐞',
+        label: 'Find Bugs',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Identify potential bugs, logical errors, or race conditions. Provide a bullet-point list of the issues and explain clearly why each one is problematic.',
+        action: 'capture'
     },
     {
         id: 'default-3',
-        icon: '📸',
-        label: 'Capture & Analyze Code',
-        prompt: 'Use the provided screenshot to analyse the code shown. Explain in simple terms what the code is doing',
+        icon: '✨',
+        label: 'Suggest Improvements',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Suggest 3-4 key improvements focusing on readability, performance, and best practices. Provide a bullet-point list of suggestions with brief justifications.',
         action: 'capture'
     },
     {
         id: 'default-4',
-        icon: '📸',
-        label: 'Capture & find issues',
-        prompt: 'Use the provided screenshot to analyse the code shown. Look for any errors or issues with the code and provide a bullet point list',
+        icon: '♻️',
+        label: 'Refactor This Code',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Provide a refactored version of the code that is cleaner and more idiomatic. After the code block, briefly explain the key changes you made and why they are improvements.',
         action: 'capture'
     },
     {
         id: 'default-5',
-        icon: '📸',
-        label: 'Capture & suggest improvements',
-        prompt: 'Use the provided screenshot to analyse the code shown. Look for ways to improve that code and provide a bullet point list',
+        icon: '🧪',
+        label: 'Write Unit Tests',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. Write a concise set of unit tests for this code. Cover the main logic, at least two important edge cases, and provide comments explaining what each test case is verifying.',
         action: 'capture'
     },
+    {
+        id: 'default-6',
+        icon: '✍️',
+        label: 'Write Code from Transcript',
+        prompt: 'I am in a coding interview. Based on the following transcript, write the complete code file that fulfills the request. The code should be clean, well-structured, and include comments for complex logic. Provide the full, ready-to-use file content, not just a snippet.',
+        action: 'copy'
+    },
+    {
+        id: 'default-7',
+        icon: '🎯',
+        label: 'Analyze Transcript for Plan',
+        prompt: 'I am in a coding interview. Based on the following transcript, what is the primary goal? Create a concise, step-by-step plan for me to follow to implement the feature or fix the bug. Format the output as a simple checklist.',
+        action: 'copy'
+    },
+    {
+        id: 'default-8',
+        icon: '🗣️',
+        label: 'Prep for Behavioral Question',
+        prompt: 'I am in a coding interview. The interviewer just asked the question(s) in the transcript below. Generate 3-5 concise, tactical talking points to help me structure my answer effectively. Format them as bullet points starting with action verbs.',
+        action: 'copy'
+    },
+    {
+        id: 'default-9',
+        icon: '⏱️',
+        label: 'Analyze Complexity',
+        prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. What is the time and space complexity (Big O notation) of this code? Provide a brief, easy-to-understand explanation for your answer.',
+        action: 'capture'
+    },
+    {
+        id: 'default-10',
+        icon: '❓',
+        label: 'Suggest Follow-up Questions',
+        prompt: 'I am in a coding interview and just finished discussing the code in the screenshot. What are 2-3 insightful follow-up questions I could ask the interviewer about the code or related architecture to show my curiosity and deeper understanding?',
+        action: 'capture'
+    },
+    {
+        id: 'default-11',
+        icon: '📚',
+        label: 'Generate Documentation',
+        prompt: 'I am in a coding interview. Use the provided screenshot to generate a clear and concise documentation block (like JSDoc, Python Docstring, etc.) for the function or class shown. Include a brief description, parameters, and what it returns.',
+        action: 'capture'
+    }
 ];
 
 class CustomPromptsManager {
