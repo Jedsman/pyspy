@@ -1,7 +1,8 @@
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { Monitor } = require('node-screenshots');
+const screenshot = require('screenshot-desktop');
+const sharp = require('sharp');
 // Load environment variables from .env file in the same directory as main.js
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -120,68 +121,55 @@ ipcMain.on('close-screenshot', async (event, selection) => {
   }
 
   try {
-    // Get the primary display dimensions
+    // Get the primary display dimensions and DPI
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width, height } = primaryDisplay.size;
+    const { width: logicalWidth, height: logicalHeight } = primaryDisplay.size;
+    const scaleFactor = primaryDisplay.scaleFactor;
 
-    console.log(`Display info: logical=${width}x${height}`);
-    console.log(`Selection: x=${selection.x}, y=${selection.y}, width=${selection.width}, height=${selection.height}`);
+    console.log(`📸 Display: logical=${logicalWidth}x${logicalHeight}, DPI scale=${scaleFactor}`);
+    console.log(`📸 Selection: x=${selection.x}, y=${selection.y}, width=${selection.width}, height=${selection.height}`);
 
-    // Use node-screenshots to capture the full screen at native resolution
-    // This uses Windows DXGI API directly for maximum quality
-    const monitors = Monitor.all();
-    const primaryMonitor = monitors[0]; // Get primary monitor
+    // Capture full screen at native resolution
+    const fullScreenBuffer = await screenshot();
+    console.log(`📸 Full screen captured: ${(fullScreenBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
-    // Capture the entire screen at native resolution
-    const fullScreenImage = primaryMonitor.captureImageSync();
+    // Calculate native resolution coordinates from logical coordinates
+    const nativeX = Math.round(selection.x * scaleFactor);
+    const nativeY = Math.round(selection.y * scaleFactor);
+    const nativeWidth = Math.round(selection.width * scaleFactor);
+    const nativeHeight = Math.round(selection.height * scaleFactor);
 
-    // Get the actual captured dimensions (width and height are properties, not methods)
-    const capturedWidth = fullScreenImage.width;
-    const capturedHeight = fullScreenImage.height;
-    console.log(`Captured at native resolution: ${capturedWidth}x${capturedHeight}`);
+    console.log(`📸 Cropping at native resolution: ${nativeWidth}x${nativeHeight} at (${nativeX}, ${nativeY})`);
 
-    // Calculate the scale factor between logical and captured resolution
-    const scaleX = capturedWidth / width;
-    const scaleY = capturedHeight / height;
+    // Crop and convert to PNG with text-optimized settings
+    const croppedBuffer = await sharp(fullScreenBuffer)
+      .extract({
+        left: nativeX,
+        top: nativeY,
+        width: nativeWidth,
+        height: nativeHeight
+      })
+      .sharpen()  // Enhance text clarity and edges
+      .png({
+        compressionLevel: 9,      // Maximum compression for smaller files
+        adaptiveFiltering: true   // Better quality at high compression
+      })
+      .toBuffer();
 
-    // Scale the selection rectangle to match the captured resolution
-    const scaledSelection = {
-      x: Math.round(selection.x * scaleX),
-      y: Math.round(selection.y * scaleY),
-      width: Math.round(selection.width * scaleX),
-      height: Math.round(selection.height * scaleY)
-    };
+    console.log(`📸 Cropped image: ${(croppedBuffer.length / 1024).toFixed(2)} KB`);
 
-    console.log(`Scaled selection: x=${scaledSelection.x}, y=${scaledSelection.y}, width=${scaledSelection.width}, height=${scaledSelection.height}`);
+    const croppedBase64 = croppedBuffer.toString('base64');
+    const pngDataUrl = `data:image/png;base64,${croppedBase64}`;
 
-    // Crop the image to the selected area (using synchronous method)
-    const croppedImage = fullScreenImage.cropSync(
-      scaledSelection.x,
-      scaledSelection.y,
-      scaledSelection.width,
-      scaledSelection.height
-    );
-
-    // Convert to PNG buffer (lossless quality)
-    const pngBuffer = croppedImage.toPngSync();
-
-    // Convert to base64 data URL
-    const base64Data = pngBuffer.toString('base64');
-    const pngDataUrl = `data:image/png;base64,${base64Data}`;
-
-    console.log(`Cropped image size: ${croppedImage.width}x${croppedImage.height}`);
-
-    // NOW, after the capture is complete, show the main window.
+    // Show main window and send result
     if (mainWindow) {
       mainWindow.show();
     }
 
-    // Send the captured image data back to the main window's renderer.
     mainWindow.webContents.send('screenshot-captured', { dataUrl: pngDataUrl, selection });
 
   } catch (e) {
-    console.error('Failed to capture screen:', e);
-    // Ensure the main window is shown even if capture fails.
+    console.error('❌ Screenshot capture failed:', e.message);
     if (mainWindow) mainWindow.show();
     mainWindow.webContents.send('screenshot-captured', { dataUrl: null });
   }
