@@ -159,6 +159,9 @@ function renderPrompts() {
                 <button class="prompt-action-btn copy-btn" onclick="handlePromptClick('${prompt.id}')" title="Send prompt to Gemini">
                     📋
                 </button>
+                <button class="prompt-action-btn system-prompt-btn" onclick="applyAsSystemPrompt('${prompt.id}')" title="Apply to selected transcripts">
+                    🎯
+                </button>
                 <button class="prompt-action-btn edit-btn" onclick="editPrompt('${prompt.id}')" title="Edit">
                     ✏️
                 </button>
@@ -291,6 +294,55 @@ function savePromptFromModal() {
 
     renderPrompts();
     closePromptModal();
+}
+
+function applyAsSystemPrompt(promptId) {
+    const prompt = promptsManager.getPrompt(promptId);
+    if (!prompt) {
+        console.error('Prompt not found:', promptId);
+        return;
+    }
+
+    // Get all selected transcript segments
+    const checkboxes = document.querySelectorAll('.transcript-checkbox:checked');
+    if (checkboxes.length === 0) {
+        showNotification('⚠️ No transcripts selected!');
+        return;
+    }
+
+    // Collect selected transcript texts
+    const selectedTranscripts = [];
+    checkboxes.forEach(checkbox => {
+        const segmentId = checkbox.dataset.segmentId;
+        const segment = transcriptSegments.find(s => s.id === segmentId);
+        if (segment) {
+            selectedTranscripts.push(`[${segment.speaker}]: ${segment.text}`);
+        }
+    });
+
+    if (selectedTranscripts.length === 0) {
+        showNotification('⚠️ Could not find transcript data!');
+        return;
+    }
+
+    // Combine system prompt with selected transcripts
+    const combinedText = `${prompt.prompt}\n\n---\n\n${selectedTranscripts.join('\n\n')}`;
+
+    console.log('Applying system prompt to selected transcripts...');
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'gemini_coach_request',
+            text: combinedText
+        };
+        ws.send(JSON.stringify(message));
+        showNotification('✓ Request sent to Gemini!');
+
+        // Uncheck all checkboxes
+        checkboxes.forEach(cb => cb.checked = false);
+    } else {
+        console.error('WebSocket not connected. Cannot send request.');
+        showNotification('❌ WebSocket not connected.');
+    }
 }
 
 function showNotification(text) {

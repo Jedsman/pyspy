@@ -73,7 +73,7 @@ function createTranscriptWindow() {
 
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 800,
+        width: 900,
         height: 600,
         frame: false,
         transparent: true,
@@ -86,7 +86,17 @@ function createWindow() {
     });
 
     mainWindow.loadFile('overlay.html');
-    // mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+    // Press F12 to toggle DevTools
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.key === 'F12' && input.type === 'keyDown') {
+            if (mainWindow.webContents.isDevToolsOpened()) {
+                mainWindow.webContents.closeDevTools();
+            } else {
+                mainWindow.webContents.openDevTools({ mode: 'detach' });
+            }
+        }
+    });
 }
 
 app.whenReady().then(() => {
@@ -110,8 +120,16 @@ app.on('window-all-closed', () => {
 // Handle window resizing from renderer
 ipcMain.on('resize-window', (event, deltaX, deltaY) => {
     if (mainWindow) {
-        const [width, height] = mainWindow.getSize();
-        mainWindow.setSize(width + deltaX, height + deltaY);
+        const bounds = mainWindow.getBounds();
+        const newWidth = Math.max(600, bounds.width + deltaX);  // Minimum width: 600px
+        const newHeight = Math.max(400, bounds.height + deltaY);  // Minimum height: 400px
+
+        mainWindow.setBounds({
+            x: bounds.x,
+            y: bounds.y,
+            width: newWidth,
+            height: newHeight
+        });
     }
 });
 

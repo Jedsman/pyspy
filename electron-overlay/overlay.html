@@ -25,6 +25,7 @@
             display: flex;
             flex-direction: column;
             padding: 10px;
+            position: relative;
         }
 
         .titlebar {
@@ -338,14 +339,51 @@
             background: linear-gradient(135deg, transparent 55%, rgba(76, 175, 80, 0.6) 55%);
         }
 
-        /* Transcript Panel Styles */
+        /* Transcript Panel Styles - Right Side Slide-out (next to custom prompts) */
         .transcript-panel {
-            flex: 0 0 300px;
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(0, 0, 0, 0.3);
+            position: fixed;
+            right: 300px;
+            top: 0;
+            bottom: 0;
+            width: 400px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            z-index: 999;
+            border-left: 2px solid rgba(76, 175, 80, 0.5);
+        }
+
+        .transcript-panel.open {
+            transform: translateX(0);
+        }
+
+        .transcript-toggle-btn {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(76, 175, 80, 0.8);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(76, 175, 80, 1);
+            border-right: none;
+            color: white;
+            padding: 15px 8px;
+            border-radius: 8px 0 0 8px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1000;
+            transition: background 0.2s;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        .transcript-toggle-btn:hover {
+            background: rgba(76, 175, 80, 1);
+            padding-left: 12px;
         }
 
         .transcript-header {
@@ -374,10 +412,14 @@
             background: rgba(255, 50, 50, 0.5);
         }
 
-        /* Custom Prompts Section */
+        /* Custom Prompts Section - Fixed on right side */
         .custom-prompts-section {
-            background: rgba(20, 20, 20, 0.5);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            width: 300px;
+            background: rgba(20, 20, 20, 0.8);
+            border-left: 2px solid rgba(168, 85, 247, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .custom-prompts-header {
@@ -520,6 +562,11 @@
         .copy-btn:hover {
             background: rgba(59, 130, 246, 0.3);
             border-color: rgba(59, 130, 246, 0.5);
+        }
+
+        .system-prompt-btn:hover {
+            background: rgba(168, 85, 247, 0.3);
+            border-color: rgba(168, 85, 247, 0.5);
         }
 
         .edit-btn:hover {
@@ -751,10 +798,27 @@
             margin-bottom: 8px;
         }
 
+        .transcript-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .transcript-checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+        }
+
+        .transcript-checkbox {
+            cursor: pointer;
+        }
+
         .transcript-copy-btn {
-            position: absolute;
-            bottom: 8px;
-            right: 8px;
             background: rgba(76, 175, 80, 0.3);
             border: 1px solid rgba(76, 175, 80, 0.5);
             color: #ffffff;
@@ -946,7 +1010,7 @@
                 <button onclick="sendGenerate()" style="background: #4caf50; margin-left: 10px;">🆕 New</button>
                 <button onclick="sendUpdate()" style="background: #ff9800;">💾 Update</button>
                 <button id="modeToggleBtn" onclick="toggleMode()" style="background: #9c27b0;" title="Toggle between Code and Coach mode">🔄 <span id="currentMode">Code</span></button>
-                <button onclick="openTranscriptWindow()" title="Open Transcript Window">📄</button>
+                <button id="transcriptModeBtn" onclick="toggleTranscriptMode()" style="background: #6366f1;" title="Toggle transcript mode (Auto/Manual)">📄 <span id="transcriptMode">Auto</span></button>
                 <div class="opacity-control">
                     <label>BG:</label>
                     <input type="range" id="bgOpacitySlider" min="0" max="90" value="50" step="5">
@@ -970,38 +1034,48 @@
                     <div class="empty-state">Waiting for files...</div>
                 </div>
             </div>
-            <div class="transcript-panel">
-                <div class="transcript-header">
-                    <span>📝 Transcript</span>
-                    <button class="transcript-clear-btn" onclick="clearTranscript()">Clear</button>
+
+            <!-- Custom Prompts Section - Fixed on right side -->
+            <div class="custom-prompts-section">
+                <div class="custom-prompts-header" onclick="togglePrompts()">
+                    <span style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">💬 Custom Prompts for Claude</span>
+                    <span id="promptsToggle" style="font-size: 10px; color: rgba(255, 255, 255, 0.4);">▼</span>
                 </div>
-                <div class="custom-prompts-section">
-                    <div class="custom-prompts-header" onclick="togglePrompts()">
-                        <span style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">💬 Custom Prompts for Claude</span>
-                        <span id="promptsToggle" style="font-size: 10px; color: rgba(255, 255, 255, 0.4);">▼</span>
+                <div class="prompts-content" id="promptsContent">
+                    <div class="prompts-toolbar">
+                        <button class="toolbar-btn add-btn" onclick="showAddPromptModal()">➕ Add Prompt</button>
+                        <button class="toolbar-btn reset-btn" onclick="resetToDefaults()">🔄 Reset to Defaults</button>
                     </div>
-                    <div class="prompts-content" id="promptsContent">
-                        <div class="prompts-toolbar">
-                            <button class="toolbar-btn add-btn" onclick="showAddPromptModal()">➕ Add Prompt</button>
-                            <button class="toolbar-btn reset-btn" onclick="resetToDefaults()">🔄 Reset to Defaults</button>
-                        </div>
-                        <div class="prompts-list" id="promptsList">
-                            <!-- Prompts will be rendered here by custom_prompts.js -->
-                        </div>
+                    <div class="prompts-list" id="promptsList">
+                        <!-- Prompts will be rendered here by custom_prompts.js -->
                     </div>
-                </div>
-                <div class="live-buffer" id="liveBuffer">
-                    <div class="live-buffer-header">
-                        <span style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">🔴 Live Buffer</span>
-                        <button class="capture-btn" onclick="captureTranscript()">📋 Capture</button>
-                    </div>
-                    <textarea class="live-buffer-content" id="liveBufferContent" placeholder="Live transcript appears here. You can also type a prompt and press Enter to send."></textarea>
-                </div>
-                <div class="transcript-content" id="transcriptContent">
-                    <div class="transcript-empty">No segments captured yet...</div>
                 </div>
             </div>
         </div>
+
+        <!-- Toggle button for transcript panel -->
+        <button class="transcript-toggle-btn" id="transcriptToggleBtn" onclick="toggleTranscriptPanel()">
+            📝 Transcripts
+        </button>
+
+        <!-- Transcript Panel - Right Side Slide-out -->
+        <div class="transcript-panel" id="transcriptPanel">
+            <div class="transcript-header">
+                <span>📝 Transcript</span>
+                <button class="transcript-clear-btn" onclick="clearTranscript()">Clear</button>
+            </div>
+            <div class="live-buffer" id="liveBuffer">
+                <div class="live-buffer-header">
+                    <span style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">🔴 Live Buffer</span>
+                    <button class="capture-btn" onclick="captureTranscript()">📋 Capture</button>
+                </div>
+                <textarea class="live-buffer-content" id="liveBufferContent" placeholder="Live transcript appears here. You can also type a prompt and press Enter to send."></textarea>
+            </div>
+            <div class="transcript-content" id="transcriptContent">
+                <div class="transcript-empty">No segments captured yet...</div>
+            </div>
+        </div>
+
         <div class="resize-handle" id="resizeHandle"></div>
     </div>
 
@@ -1361,6 +1435,19 @@
             }
         }
 
+        function toggleTranscriptPanel() {
+            const panel = document.getElementById('transcriptPanel');
+            const btn = document.getElementById('transcriptToggleBtn');
+
+            if (panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                btn.textContent = '📝 Transcripts';
+            } else {
+                panel.classList.add('open');
+                btn.textContent = '✕ Close';
+            }
+        }
+
         async function toggleMode() {
             const server = serverInput.value || 'localhost';
             try {
@@ -1376,6 +1463,40 @@
                 }
             } catch (error) {
                 console.error('Error toggling mode:', error);
+            }
+        }
+
+        async function toggleTranscriptMode() {
+            const server = serverInput.value || 'localhost';
+            const transcriptModeSpan = document.getElementById('transcriptMode');
+            const currentMode = transcriptModeSpan.textContent;
+            const newMode = currentMode === 'Auto' ? 'Manual' : 'Auto';
+
+            try {
+                // Send command to backend
+                const command = newMode === 'Manual' ? 'transcript_window_opened' : 'transcript_window_closed';
+                const response = await fetch(`http://${server}:5000/api/command/transcript_window`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Update UI
+                    transcriptModeSpan.textContent = newMode;
+                    const btn = document.getElementById('transcriptModeBtn');
+                    if (newMode === 'Manual') {
+                        btn.style.background = '#10b981'; // Green for manual mode
+                    } else {
+                        btn.style.background = '#6366f1'; // Blue for auto mode
+                    }
+                    console.log(`Transcript mode switched to: ${newMode}`);
+                } else {
+                    console.error('Failed to toggle transcript mode:', result.message);
+                }
+            } catch (error) {
+                console.error('Error toggling transcript mode:', error);
             }
         }
 
@@ -1536,12 +1657,20 @@
             const segmentClass = speaker === 'Partner' ? 'interviewer' : 'candidate';
             segment.className = `transcript-segment ${segmentClass}`;
 
+            const segmentId = `segment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
             segment.innerHTML = `
                 <div class="transcript-speaker">${speakerLabel}</div>
                 <div class="transcript-text">${escapeHtml(text)}</div>
-                <button class="transcript-copy-btn" onclick="copyTranscript(this, '${escapeHtml(text).replace(/'/g, "\\'")}')">
-                    📋 Copy
-                </button>
+                <div class="transcript-controls">
+                    <label class="transcript-checkbox-label">
+                        <input type="checkbox" class="transcript-checkbox" data-segment-id="${segmentId}">
+                        <span>Select</span>
+                    </label>
+                    <button class="transcript-copy-btn" onclick="copyTranscript(this, '${escapeHtml(text).replace(/'/g, "\\'")}')">
+                        📋 Copy
+                    </button>
+                </div>
             `;
 
             // Add to transcript content
@@ -1550,8 +1679,8 @@
             // Auto-scroll to bottom
             transcriptContent.scrollTop = transcriptContent.scrollHeight;
 
-            // Store in array
-            transcriptSegments.push({ speaker: speakerLabel, text, timestamp });
+            // Store in array with ID
+            transcriptSegments.push({ id: segmentId, speaker: speakerLabel, text, timestamp });
         }
 
         function copyTranscript(button, text) {
@@ -1794,10 +1923,6 @@
                 }
             }
         });
-
-        function openTranscriptWindow() {
-            window.electronAPI.openTranscriptWindow();
-        }
 
         // Connect on load
         connect();
