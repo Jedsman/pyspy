@@ -3,7 +3,7 @@ Web Server for Real-Time Code Viewer
 Displays generated code files in a web interface with live updates via WebSocket
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -777,6 +777,45 @@ async def capture_screenshot_area(request: dict):
         filename = f"screenshot_{timestamp}.png"
 
         return {"status": "success", "command": "capture_screenshot_area", "filename": filename}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/adhoc_prompt")
+async def submit_adhoc_prompt(data: dict = Body(...)):
+    """Submit an adhoc prompt to be sent to Claude Desktop via MCP"""
+    try:
+        prompt_text = data.get('prompt', '').strip()
+
+        if not prompt_text:
+            return {"status": "error", "message": "Prompt text is empty"}
+
+        # Path to prompt queue file
+        prompt_queue_file = GENERATED_CODE_DIR / ".prompt_queue.json"
+
+        # Load existing queue or create new one
+        queue = []
+        if prompt_queue_file.exists():
+            try:
+                with open(prompt_queue_file, 'r', encoding='utf-8') as f:
+                    queue = json.load(f)
+            except:
+                queue = []
+
+        # Add new prompt to queue
+        from datetime import datetime
+        timestamp = datetime.now().isoformat()
+        queue.append({
+            "prompt": prompt_text,
+            "timestamp": timestamp,
+            "type": "adhoc"
+        })
+
+        # Write updated queue
+        with open(prompt_queue_file, 'w', encoding='utf-8') as f:
+            json.dump(queue, f, indent=2)
+
+        return {"status": "success", "message": "Prompt submitted to Claude Desktop"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

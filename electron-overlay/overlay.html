@@ -997,6 +997,7 @@
                     <div class="live-buffer-content" id="liveBufferContent">
                         <div style="font-size: 11px; color: rgba(255, 255, 255, 0.4);">Waiting for speech...</div>
                     </div>
+                    <input type="text" id="adhocPromptInput" placeholder="Type a prompt and press Enter to send to Claude..." style="width: 100%; padding: 8px; margin-top: 5px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; font-size: 11px; border-radius: 4px;" />
                 </div>
                 <div class="transcript-content" id="transcriptContent">
                     <div class="transcript-empty">No segments captured yet...</div>
@@ -1084,6 +1085,7 @@
         const codeContainer = document.getElementById('codeContainer');
         const transcriptContent = document.getElementById('transcriptContent');
         const liveBufferContent = document.getElementById('liveBufferContent');
+        const adhocPromptInput = document.getElementById('adhocPromptInput');
         const bgOpacitySlider = document.getElementById('bgOpacitySlider');
         const bgOpacityValue = document.getElementById('bgOpacityValue');
         const textOpacitySlider = document.getElementById('textOpacitySlider');
@@ -1617,6 +1619,38 @@
                 console.error('Error sending transcript capture command:', error);
             }
         }
+
+        // Send adhoc prompt to Claude via MCP
+        function sendAdhocPrompt(promptText) {
+            if (!promptText.trim()) return;
+
+            console.log('Sending adhoc prompt to Claude via MCP:', promptText);
+            const server = serverInput.value || 'localhost';
+            try {
+                fetch(`http://${server}:5000/api/adhoc_prompt`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: promptText })
+                }).then(response => response.json())
+                  .then(result => {
+                    if (result.status === 'success') {
+                        console.log('Adhoc prompt sent successfully');
+                        adhocPromptInput.value = '';
+                    }
+                  })
+                  .catch(error => console.error('Error sending adhoc prompt:', error));
+            } catch (error) {
+                console.error('Error sending adhoc prompt:', error);
+            }
+        }
+
+        // Listen for Enter key in adhoc prompt input
+        adhocPromptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendAdhocPrompt(adhocPromptInput.value);
+            }
+        });
 
         // Screenshot selection functionality
         let screenshotState = {

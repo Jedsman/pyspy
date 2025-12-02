@@ -313,12 +313,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             ]
 
     elif name == "check_prompt_queue":
-        # Check for queued screenshot analysis requests
+        # Check for queued screenshot analysis requests and adhoc prompts
         if not PROMPT_QUEUE_FILE.exists():
             return [
                 TextContent(
                     type="text",
-                    text="No pending screenshot analysis requests.",
+                    text="No pending requests.",
                 )
             ]
 
@@ -332,15 +332,16 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 return [
                     TextContent(
                         type="text",
-                        text="No pending screenshot analysis requests.",
+                        text="No pending requests.",
                     )
                 ]
 
             # Get the first item from queue
             item = queue.pop(0)
             prompt_text = item.get('prompt', '')
-            filename = item.get('filename', '')
             timestamp = item.get('timestamp', '')
+            item_type = item.get('type', 'screenshot')  # 'adhoc' or 'screenshot'
+            filename = item.get('filename', '')
 
             # Update queue file (remove processed item)
             if len(queue) == 0:
@@ -349,7 +350,16 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 with open(PROMPT_QUEUE_FILE, 'w', encoding='utf-8') as f:
                     json.dump(queue, f, indent=2)
 
-            # Load the screenshot
+            # Handle adhoc prompts (no screenshot)
+            if item_type == 'adhoc':
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"💬 New prompt from overlay:\n\n{prompt_text}",
+                    )
+                ]
+
+            # Handle screenshot analysis requests (with screenshot)
             screenshot_path = SCREENSHOTS_DIR / filename
             if not screenshot_path.exists():
                 return [
