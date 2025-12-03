@@ -36,91 +36,104 @@ const DEFAULT_PROMPTS = [
         icon: '✨',
         label: 'Generate New Code',
         prompt: 'Based on the transcript of our conversation, write complete, production-ready code that implements the requirements discussed. Include proper error handling, comments for complex logic, and follow best practices for the language.',
-        action: 'new_code'
+        action: 'new_code',
+        claudeTool: 'check_code_generation_queue'
     },
     {
         id: 'default-2',
         icon: '🔄',
         label: 'Update Existing Code',
         prompt: 'Based on the transcript of our conversation and any feedback or new requirements mentioned, update and improve the existing code. Make only the necessary changes and explain what was modified.',
-        action: 'update_code'
+        action: 'update_code',
+        claudeTool: 'check_code_generation_queue'
     },
     {
         id: 'default-3',
         icon: '🤔',
         label: 'Explain This Code',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Explain in simple, easy-to-understand terms what the code is doing, its main purpose, and how it works. Structure the explanation as a few clear bullet points.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-4',
         icon: '🐞',
         label: 'Find Bugs',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Identify potential bugs, logical errors, or race conditions. Show any issues found as comments in the code along with a solution. Very briefly explain why each one is problematic.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-5',
         icon: '✨',
         label: 'Suggest Improvements',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Suggest 3-4 key improvements focusing on readability, performance, and best practices. Provide a bullet-point list of suggestions with brief justifications.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-6',
         icon: '♻️',
         label: 'Refactor This Code',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Provide a refactored version of the code that is cleaner and more idiomatic. After the code block, briefly explain the key changes you made and why they are improvements.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-7',
         icon: '🧪',
         label: 'Write Unit Tests',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Write a concise set of unit tests for this code. Cover the main logic, at least two important edge cases, and provide comments explaining what each test case is verifying.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-8',
         icon: '✍️',
         label: 'Write Code from Transcript',
         prompt: 'I am in a coding interview. Based on the following transcript, write the complete code file that fulfills the request. The code should be clean, well-structured, and include comments for complex logic. Provide the full, ready-to-use file content, not just a snippet.',
-        action: 'copy'
+        action: 'copy',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-9',
         icon: '🎯',
         label: 'Analyze Transcript for Plan',
         prompt: 'I am in a coding interview. Based on the following transcript, what is the primary goal? Create a concise, step-by-step plan for me to follow to implement the feature or fix the bug. Format the output as a simple checklist.',
-        action: 'copy'
+        action: 'copy',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-10',
         icon: '🗣️',
         label: 'Prep for Behavioral Question',
         prompt: 'I am in a coding interview. The interviewer just asked the question(s) in the transcript below. Generate 3-5 concise, tactical talking points to help me structure my answer effectively. Format them as bullet points starting with action verbs.',
-        action: 'copy'
+        action: 'copy',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-11',
         icon: '⏱️',
         label: 'Analyze Complexity',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. What is the time and space complexity (Big O notation) of this code? Provide a brief, easy-to-understand explanation for your answer.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-12',
         icon: '❓',
         label: 'Suggest Follow-up Questions',
         prompt: 'I am in a coding interview and just finished discussing the code in the screenshot. What are 2-3 insightful follow-up questions I could ask the interviewer about the code or related architecture to show my curiosity and deeper understanding?',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     },
     {
         id: 'default-13',
         icon: '📚',
         label: 'Generate Documentation',
         prompt: 'I am in a coding interview. Use the provided screenshot to generate a clear and concise documentation block (like JSDoc, Python Docstring, etc.) for the function or class shown. Include a brief description, parameters, and what it returns.',
-        action: 'capture'
+        action: 'capture',
+        claudeTool: 'check_prompt_queue'
     }
 ];
 
@@ -268,12 +281,27 @@ function togglePrompts() {
     }
 }
 
+// Copy Claude tool name to clipboard
+function copyClaudeToolToClipboard(toolName) {
+    navigator.clipboard.writeText(toolName).then(() => {
+        console.log(`[CLAUDE-TOOL] Copied "${toolName}" to clipboard`);
+    }).catch((error) => {
+        console.error('[CLAUDE-TOOL] Failed to copy to clipboard:', error);
+    });
+}
+
 async function handlePromptClick(id) {
     const prompt = promptsManager.getPrompt(id);
     if (!prompt) return;
 
     // Append system prompt to ensure Markdown formatting
     const fullPrompt = prompt.prompt + '\n\n' + MARKDOWN_SYSTEM_PROMPT;
+
+    // Auto-copy Claude tool to clipboard if defined
+    if (prompt.claudeTool) {
+        copyClaudeToolToClipboard(prompt.claudeTool);
+        showNotification(`📋 ${prompt.claudeTool} copied!`);
+    }
 
     if (prompt.action === 'capture') {
         // Capture behavior - take screenshot and analyze
