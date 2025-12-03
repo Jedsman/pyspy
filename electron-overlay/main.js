@@ -260,7 +260,8 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destin
         }
         console.log(`[SAVE-SCREENSHOT] Destinations received: ${JSON.stringify(dests)}`);
 
-        // Use the path from the .env file, or a default if not provided.
+        // Use SHARED_DRIVE_PATH for queue file (shared with backend), SCREENSHOT_PATH for local storage
+        const sharedDrivePath = process.env.SHARED_DRIVE_PATH || path.join(__dirname, '..', 'generated_code');
         const screenshotsDir = process.env.SCREENSHOT_PATH || path.join(__dirname, '..', 'generated_code', 'screenshots');
         const generatedCodeDir = path.dirname(screenshotsDir);
 
@@ -292,8 +293,8 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destin
             fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
             console.log('[SAVE-SCREENSHOT] Added to .command file: analyze_screenshot');
 
-            // Always write to .prompt_queue.json for Claude Desktop (new feature)
-            const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
+            // Always write to .prompt_queue.json for Claude Desktop (new feature) - use shared drive
+            const queueFilePath = path.join(sharedDrivePath, '.prompt_queue.json');
             let queue = [];
             if (fs.existsSync(queueFilePath)) {
                 const queueData = fs.readFileSync(queueFilePath, 'utf-8');
@@ -308,7 +309,7 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destin
             });
 
             fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
-            console.log(`[SAVE-SCREENSHOT] Added to .prompt_queue.json: ${fileName}`);
+            console.log(`[SAVE-SCREENSHOT] Added to .prompt_queue.json on shared drive: ${queueFilePath}`);
         }
 
         return { success: true, fileName: fileName, path: filePath }; // Return both for flexibility
@@ -329,6 +330,7 @@ ipcMain.handle('send-adhoc-prompt', async (event, promptText, destinations) => {
         console.log(`[SEND-ADHOC] Destinations received: ${JSON.stringify(dests)}`);
 
         const generatedCodeDir = process.env.GENERATED_CODE_PATH || path.join(__dirname, '..', 'generated_code');
+        const sharedDrivePath = process.env.SHARED_DRIVE_PATH || path.join(__dirname, '..', 'generated_code');
 
         // Always write .command file for Gemini (backwards compatibility)
         const commandFilePath = path.join(generatedCodeDir, '.command');
@@ -339,8 +341,8 @@ ipcMain.handle('send-adhoc-prompt', async (event, promptText, destinations) => {
         fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
         console.log('[SEND-ADHOC] Added to .command file: analyze_text_prompt');
 
-        // Always write to .prompt_queue.json for Claude Desktop (new feature)
-        const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
+        // Always write to .prompt_queue.json for Claude Desktop (new feature) - use shared drive
+        const queueFilePath = path.join(sharedDrivePath, '.prompt_queue.json');
         let queue = [];
         if (fs.existsSync(queueFilePath)) {
             const queueData = fs.readFileSync(queueFilePath, 'utf-8');
@@ -354,7 +356,7 @@ ipcMain.handle('send-adhoc-prompt', async (event, promptText, destinations) => {
         });
 
         fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
-        console.log('[SEND-ADHOC] Added to .prompt_queue.json: adhoc text prompt');
+        console.log(`[SEND-ADHOC] Added to .prompt_queue.json on shared drive: ${queueFilePath}`);
 
         return { success: true };
     } catch (error) {
