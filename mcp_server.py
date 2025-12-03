@@ -5,7 +5,6 @@ Exposes transcripts and screenshots as resources to Claude Desktop
 
 import asyncio
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import Any
 import base64
@@ -21,19 +20,17 @@ from mcp.types import (
     EmbeddedResource,
 )
 
-# Use centralized config for all paths
-from config import (
-    GENERATED_CODE_DIR,
-    SCREENSHOTS_DIR,
-    COMMAND_FILE,
-)
+# Import centralized config
+from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR
 
 # Initialize MCP server
 server = Server("voice-to-code")
 
-# Define specific file paths based on the configured directories
+# Paths to transcript and screenshot files
 LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
+PROMPT_QUEUE_FILE = GENERATED_CODE_DIR / ".prompt_queue.json"
+COMMAND_FILE = GENERATED_CODE_DIR / ".command"
 
 
 @server.list_resources()
@@ -78,7 +75,7 @@ async def handle_list_resources() -> list[Resource]:
 
 
 @server.read_resource()
-async def handle_read_resource(uri: str) -> str:
+async def handle_read_resource(uri: str) -> str | list[TextContent | ImageContent]:
     """Read transcript or screenshot resource content"""
 
     if uri.startswith("transcript://live"):
@@ -129,14 +126,22 @@ async def handle_read_resource(uri: str) -> str:
             return "No captured segments available."
 
     elif uri.startswith("screenshot:///"):
-        # Return screenshot as base64-encoded image
+        # Return screenshot as ImageContent
         screenshot_name = uri.replace("screenshot:///", "")
         screenshot_path = SCREENSHOTS_DIR / screenshot_name
 
         if screenshot_path.exists():
             with open(screenshot_path, 'rb') as f:
                 image_data = base64.b64encode(f.read()).decode('utf-8')
-            return f"data:image/png;base64,{image_data}"
+
+            # Return as a list containing ImageContent
+            return [
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
         else:
             raise ValueError(f"Screenshot not found: {screenshot_name}")
 
@@ -175,11 +180,34 @@ async def handle_list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="view_screenshot",
+            description="View a specific screenshot by filename",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The screenshot filename (e.g., 'capture-2025-12-01T22-31-45-123Z.png')",
+                    }
+                },
+                "required": ["filename"],
+            },
+        ),
+        Tool(
+            name="check_prompt_queue",
+            description="Check for pending screenshot analysis requests. Returns any queued prompts with their associated screenshots. Call this periodically or when notified of new captures.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
     ]
 
 
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Handle tool execution requests"""
 
     if name == "capture_transcript":
@@ -194,13 +222,13 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         ]
 
     elif name == "capture_screenshot":
-        # Trigger screenshot capture via UI command
-        COMMAND_FILE.write_text("ui_capture_screenshot")
+        # Trigger screenshot capture via command file
+        COMMAND_FILE.write_text("capture_screenshot")
 
         return [
             TextContent(
                 type="text",
-                text="Screenshot capture triggered in the UI. The screenshot will be saved to the screenshots directory.",
+                text="Screenshot capture triggered. The screenshot will be saved to the screenshots directory.",
             )
         ]
 
@@ -234,12 +262,17 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     context_parts.append(f"[{speaker}] {text}")
                 context_parts.append("")
 
-        # Add screenshot count
-        screenshot_count = len(list(SCREENSHOTS_DIR.glob("*.png")))
-        if screenshot_count > 0:
-            context_parts.append(f"=== SCREENSHOTS ===")
-            context_parts.append(f"{screenshot_count} screenshot(s) available")
-            context_parts.append("Use the screenshot:/// resources to view them")
+        # Add screenshots
+        if SCREENSHOTS_DIR.exists():
+            screenshots = sorted(SCREENSHOTS_DIR.glob("*.png"), reverse=True)
+            if screenshots:
+                context_parts.append(f"=== SCREENSHOTS ===")
+                context_parts.append(f"{len(screenshots)} screenshot(s) available:")
+                context_parts.append("To view a screenshot, use the view_screenshot tool with the filename.")
+                for screenshot in screenshots[:5]:  # Show last 5 screenshots
+                    context_parts.append(f"  - {screenshot.name}")
+                if len(screenshots) > 5:
+                    context_parts.append(f"  ... and {len(screenshots) - 5} more")
 
         return [
             TextContent(
@@ -247,6 +280,118 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 text="\n".join(context_parts) if context_parts else "No interview context available yet.",
             )
         ]
+
+    elif name == "view_screenshot":
+        # View a specific screenshot by filename
+        filename = arguments.get("filename")
+        if not filename:
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: No filename provided.",
+                )
+            ]
+
+        screenshot_path = SCREENSHOTS_DIR / filename
+        if screenshot_path.exists():
+            with open(screenshot_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            return [
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Screenshot not found: {filename}",
+                )
+            ]
+
+    elif name == "check_prompt_queue":
+        # Check for queued screenshot analysis requests and adhoc prompts
+        if not PROMPT_QUEUE_FILE.exists():
+            return [
+                TextContent(
+                    type="text",
+                    text="No pending requests.",
+                )
+            ]
+
+        try:
+            with open(PROMPT_QUEUE_FILE, 'r', encoding='utf-8') as f:
+                queue = json.load(f)
+
+            if not queue or len(queue) == 0:
+                # Empty queue, delete file
+                PROMPT_QUEUE_FILE.unlink()
+                return [
+                    TextContent(
+                        type="text",
+                        text="No pending requests.",
+                    )
+                ]
+
+            # Get the first item from queue
+            item = queue.pop(0)
+            prompt_text = item.get('prompt', '')
+            timestamp = item.get('timestamp', '')
+            item_type = item.get('type', 'screenshot')  # 'adhoc' or 'screenshot'
+            filename = item.get('filename', '')
+
+            # Update queue file (remove processed item)
+            if len(queue) == 0:
+                PROMPT_QUEUE_FILE.unlink()
+            else:
+                with open(PROMPT_QUEUE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(queue, f, indent=2)
+
+            # Handle adhoc prompts (no screenshot)
+            if item_type == 'adhoc':
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"💬 New prompt from overlay:\n\n{prompt_text}",
+                    )
+                ]
+
+            # Handle screenshot analysis requests (with screenshot)
+            screenshot_path = SCREENSHOTS_DIR / filename
+            if not screenshot_path.exists():
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Screenshot file not found: {filename}",
+                    )
+                ]
+
+            with open(screenshot_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            # Return the prompt text and the screenshot
+            return [
+                TextContent(
+                    type="text",
+                    text=f"📸 New screenshot analysis request:\n\n{prompt_text}\n\nScreenshot: {filename}\nCaptured at: {timestamp}",
+                ),
+                ImageContent(
+                    type="image",
+                    data=image_data,
+                    mimeType="image/png"
+                )
+            ]
+
+        except Exception as e:
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error reading prompt queue: {str(e)}",
+                )
+            ]
 
     else:
         raise ValueError(f"Unknown tool: {name}")
