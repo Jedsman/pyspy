@@ -1,0 +1,213 @@
+# Expert System Integration TODO
+# Adding NotebookLM-style knowledge base using MCP + Claude Desktop
+
+## Overview
+Add document context and query capabilities to interview coach using Model Context Protocol (MCP)
+with Claude Desktop for better reasoning and document analysis during interviews.
+
+## Use Cases
+1. Company Research Context
+   - Upload company docs, job descriptions, tech blogs
+   - Query: "What technologies does this company use?"
+   - Query: "What should I emphasize in my experience?"
+
+2. Technical Documentation
+   - Upload API docs, framework guides
+   - During interview: "How does authentication work in their stack?"
+
+3. Interview Prep Materials
+   - Upload Cracking the Coding Interview, system design docs
+   - Get instant answers during practice
+
+4. Past Interview Transcripts
+   - Build knowledge base from interview history
+   - Query: "What questions have I struggled with?"
+   - Query: "How did I explain microservices last time?"
+
+## Architecture Decision
+
+### RECOMMENDED: Filesystem MCP (Simplest - 5 minute setup)
+- Use built-in Filesystem MCP server in Claude Desktop
+- Point it at `generated_code/` folder
+- Drop documents there before interviews
+- Claude automatically reads via MCP during queries
+
+Pros:
+- Zero custom code needed
+- Works immediately
+- Leverages existing file structure
+
+Cons:
+- Manual file management
+- No programmatic control
+
+### Alternative: Custom MCP Server (Future enhancement)
+Build dedicated interview-context MCP server with:
+- `add_document(file_path)` tool
+- `query_context(question)` tool
+- Live transcript as MCP resource
+- Structured company info resources
+
+## Implementation Plan
+
+### Phase 1: Filesystem MCP Setup (CURRENT PRIORITY)
+
+1. Install Filesystem MCP in Claude Desktop
+   Location: %APPDATA%\Claude\claude_desktop_config.json
+
+   Add config:
+   ```json
+   {
+     "mcpServers": {
+       "interview-filesystem": {
+         "command": "npx",
+         "args": [
+           "-y",
+           "@modelcontextprotocol/server-filesystem",
+           "c:/Users/theje/code/pyspy/generated_code"
+         ]
+       }
+     }
+   }
+   ```
+
+2. Create `knowledge_base/` subfolder in generated_code/
+   - company_docs/
+   - job_descriptions/
+   - technical_references/
+   - past_interviews/
+
+3. Test workflow:
+   - Drop company_docs.txt in knowledge_base/
+   - Open Claude Desktop
+   - Query: "Read knowledge_base/company_docs.txt and .live_transcript,
+            then tell me what technical skills to emphasize"
+
+4. Add UI element in overlay:
+   - New section: "📚 Knowledge Base"
+   - Button: "Open Knowledge Folder"
+   - Button: "Ask Claude with Context" (copies prompt + opens Claude Desktop)
+
+### Phase 2: Integration with Overlay UI
+
+1. Add custom prompt action type: `claude_query`
+   - Similar to existing `capture`, `copy`, `new_code`, `update_code`
+   - When clicked: formats question + copies to clipboard + shows notification
+
+2. Add default prompts for knowledge queries:
+   - "Analyze Company Fit" - Compares transcript + job description
+   - "Technical Deep Dive" - References uploaded tech docs
+   - "Interview Performance Review" - Compares with past transcripts
+
+3. Frontend (custom_prompts.js):
+   ```javascript
+   if (prompt.action === 'claude_query') {
+       const contextPrompt = `${prompt.prompt}\n\nContext:\n` +
+           `- Read the .live_transcript file\n` +
+           `- Reference any relevant documents in knowledge_base/\n\n` +
+           `Selected transcript segments:\n${selectedTranscripts}`;
+
+       navigator.clipboard.writeText(contextPrompt);
+       showNotification('📋 Query copied! Paste in Claude Desktop');
+   }
+   ```
+
+### Phase 3: Custom MCP Server (Future - Only if needed)
+
+Create `interview_mcp_server.py` with:
+
+1. Resources:
+   - `interview://transcript` - Live transcript
+   - `interview://doc/{doc_id}` - Uploaded documents
+   - `interview://company-info` - Structured company data
+
+2. Tools:
+   - `add_document` - Load document into context
+   - `query_docs` - Semantic search (if we add vector DB later)
+   - `get_interview_stats` - Analytics on past interviews
+
+3. Start server:
+   ```
+   uv run interview_mcp_server.py
+   ```
+
+4. Add to Claude Desktop config:
+   ```json
+   {
+     "mcpServers": {
+       "interview-context": {
+         "command": "uv",
+         "args": [
+           "--directory",
+           "c:/Users/theje/code/pyspy",
+           "run",
+           "interview_mcp_server.py"
+         ]
+       }
+     }
+   }
+   ```
+
+## File Structure After Implementation
+
+```
+pyspy/
+├── generated_code/
+│   ├── knowledge_base/           # NEW - Document storage
+│   │   ├── company_docs/
+│   │   ├── job_descriptions/
+│   │   ├── technical_references/
+│   │   └── past_interviews/
+│   ├── .live_transcript           # Existing - MCP will read this
+│   ├── .transcript                # Existing
+│   └── [generated code files]
+├── electron-overlay/
+│   └── custom_prompts.js          # ADD claude_query action type
+├── interview_mcp_server.py        # FUTURE - Custom MCP server
+└── expert.todo.txt                # This file
+
+```
+
+## Benefits
+
+1. During Live Interviews:
+   - Query company-specific context in <2 seconds
+   - Get tailored technical explanations
+   - Reference past successful answers
+
+2. Interview Prep:
+   - Comprehensive document analysis
+   - Better reasoning than Gemini for complex queries
+   - Persistent context across sessions
+
+3. Post-Interview:
+   - Review transcripts with company context
+   - Track improvement over time
+   - Build personal interview knowledge base
+
+## Success Metrics
+
+- Time to answer context query: <2 seconds
+- Documents accessible: Company docs, job descriptions, tech refs
+- Integration effort: <1 hour for Phase 1
+- User workflow: Drop file → Ask Claude → Get answer
+
+## Next Steps
+
+1. [ ] Set up Filesystem MCP in Claude Desktop config
+2. [ ] Create knowledge_base/ folder structure
+3. [ ] Test with sample company doc + live transcript
+4. [ ] Add "Ask Claude" UI element in overlay
+5. [ ] Add claude_query action type to custom prompts
+6. [ ] Create default knowledge query prompts
+7. [ ] Document workflow in README
+
+## Notes
+
+- Filesystem MCP is perfect for MVP - no custom code needed
+- Custom MCP server only if we need:
+  - Programmatic document management
+  - Advanced search/indexing
+  - Real-time transcript updates as MCP resource
+- Claude Desktop's reasoning > Gemini for document synthesis
+- Can always start simple and add complexity later

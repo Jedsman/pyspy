@@ -175,10 +175,27 @@ class AudioCapture:
 
             # Check if loopback is supported
             if not default_speakers["isLoopbackDevice"]:
+                # Search for WASAPI loopback device matching default output
+                # Filter out non-WASAPI devices like Stereo Mix
+                wasapi_host_index = wasapi_info["index"]
                 for loopback in self.audio.get_loopback_device_info_generator():
+                    # Only accept devices from WASAPI host API
+                    if loopback["hostApi"] != wasapi_host_index:
+                        continue
+                    # Must explicitly be marked as loopback
+                    if not loopback.get("isLoopbackDevice", False):
+                        continue
+                    # Prefer device matching default output name
                     if default_speakers["name"] in loopback["name"]:
                         default_speakers = loopback
                         break
+                else:
+                    # If no match found, use first valid WASAPI loopback device
+                    for loopback in self.audio.get_loopback_device_info_generator():
+                        if loopback["hostApi"] == wasapi_host_index and loopback.get("isLoopbackDevice", False):
+                            default_speakers = loopback
+                            print(f"⚠️ Using first available WASAPI loopback device")
+                            break
 
             print(f"🔊 System Audio: {default_speakers['name']}")
             return default_speakers
