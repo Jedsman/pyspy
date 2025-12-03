@@ -1,0 +1,447 @@
+# Merge feat/claude-mcp into feat/expert-mcp TODO
+# Tracking the integration of Claude Desktop MCP features into the golden branch
+
+## Overview
+Merge feat/claude-mcp (Claude Desktop integration) into feat/expert-mcp (Gemini-based golden branch)
+to create a unified system supporting both Claude and Gemini as LLM backends with a router pattern.
+
+Source branches:
+- GOLDEN: feat/expert-mcp (current working branch, based on feat/gemini-mcp)
+- SOURCE: feat/claude-mcp (contains Claude Desktop integration to be merged)
+- REFERENCE: feat/gemini-mcp (original Gemini-only branch)
+
+## Key Decisions
+✓ KEEP custom_system_prompt - actively used for inline prompts from MCP and hotkeys
+✓ KEEP WASAPI audio fix - already working in expert-mcp, no changes needed
+✓ REMOVE test files - test_loopback.py, test_wasapi_loopback.py, test_websocket.py
+✓ DEPRECATE gemini_mcp_client.py - not actively used, archive for future reference
+✓ BUILD LLM Router - clean abstraction for Claude/Gemini/future LLM backends
+
+---
+
+## STAGE 1: Foundation Setup - Claude Desktop Configuration
+## Status: [x] COMPLETE
+## Description: Add Claude Desktop support infrastructure without breaking Gemini
+
+### 1.1: Merge Claude Desktop Config Files
+- [x] Read feat/claude-mcp:.claude/settings.local.json
+- [x] Merge into expert-mcp:.claude/settings.local.json
+- [x] Read feat/claude-mcp:claude_desktop_config.json
+- [x] Merge into expert-mcp:claude_desktop_config.json
+- [x] Verify both files are valid JSON
+- [x] Create .claude/ directory if needed
+
+### 1.2: Update config.py
+- [x] Read current config.py from expert-mcp
+- [x] Compare with feat/claude-mcp:config.py
+- [x] Merge path handling logic (SHARED_DRIVE_PATH flexibility)
+- [x] Ensure both GENERATED_CODE_DIR and SCREENSHOTS_DIR work with both LLMs
+- [x] Test import: python -c "from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR"
+
+### 1.3: Stage 1 Testing
+- [x] Verify application starts: python voice_to_code.py (Gemini mode)
+- [x] Check Claude Desktop config files exist
+- [x] Confirm no syntax errors in config files
+- [x] Verify generated_code/ directory structure is correct
+- [x] Commit changes: "Stage 1: Add Claude Desktop configuration" (pending user commit)
+
+---
+
+## STAGE 2: Enhanced MCP Server
+## Status: [ ] Not Started
+## Description: Upgrade MCP server with new tools and proper type handling
+
+### 2.1: Merge New MCP Tools
+- [ ] Read current mcp_server.py from expert-mcp
+- [ ] Identify new tools in feat/claude-mcp:mcp_server.py
+  - view_screenshot tool
+  - check_prompt_queue tool
+- [ ] Merge tool definitions into expert-mcp
+- [ ] Verify proper MCP tool schema
+
+### 2.2: Update Resource Handling
+- [ ] Review screenshot resource handling in both versions
+- [ ] Update handle_read_resource() to return ImageContent objects
+- [ ] Test: screenshots return proper MCP ImageContent type
+- [ ] Ensure backward compatibility with existing transcript resources
+- [ ] Verify all return types match MCP specification
+
+### 2.3: Test MCP Server
+- [ ] Start MCP server: python mcp_server.py
+- [ ] Verify server initializes without errors
+- [ ] Test list_resources() - should show transcripts + screenshots
+- [ ] Test list_tools() - should show all tools
+- [ ] Test read_resource() for transcript://live
+- [ ] Test read_resource() for screenshot:/// files
+- [ ] Test view_screenshot tool
+- [ ] Test check_prompt_queue tool
+- [ ] Verify Claude Desktop can connect to MCP server
+- [ ] Commit changes: "Stage 2: Enhanced MCP server with new tools and ImageContent"
+
+---
+
+## STAGE 3: Audio Capture Improvements
+## Status: [ ] Not Started
+## Description: Ensure WASAPI robustness without changing working implementation
+
+### 3.1: Verify WASAPI Fix
+- [ ] Read current voice_to_code.py (WASAPI loopback section)
+- [ ] Compare with feat/claude-mcp version (should be simpler)
+- [ ] Confirm expert-mcp has the fix that works
+- [ ] Document why expert-mcp version is preferred
+
+### 3.2: Test Audio Capture
+- [ ] Start voice_to_code.py
+- [ ] Verify loopback device detected correctly
+- [ ] Check audio input levels are appropriate
+- [ ] Confirm no errors during audio capture
+- [ ] Test for ~30 seconds of continuous capture
+- [ ] Verify no memory leaks during capture
+
+### 3.3: Stage 3 Verification
+- [ ] Audio quality is equivalent to previous tests
+- [ ] No regression in device detection
+- [ ] Loopback device initialization is robust
+- [ ] No changes made - just verified
+- [ ] Commit if any documentation added: "Stage 3: Verify WASAPI audio capture robustness"
+
+---
+
+## STAGE 4: LLM Router Implementation [CORE FEATURE]
+## Status: [ ] Not Started
+## Description: Create abstraction layer for Claude/Gemini/future LLM support
+
+### 4.1: Design LLM Router Architecture
+- [ ] Design base LLMRouter class interface
+  - process(conversation, active_file, custom_system_prompt) method
+  - Return type: LLM response object
+- [ ] Design GeminiRouter implementation
+  - Inherits from LLMRouter
+  - Uses existing Gemini API logic
+  - Handles custom_system_prompt formatting for Gemini
+- [ ] Design ClaudeRouter implementation (scaffold)
+  - Inherits from LLMRouter
+  - Ready for Claude API implementation later
+  - Handles custom_system_prompt formatting for Claude
+- [ ] Plan LocalRouter scaffold for future use
+
+### 4.2: Create llm_router.py
+- [ ] Create new file: llm_router.py
+- [ ] Implement LLMRouter base class
+- [ ] Implement GeminiRouter with extracted logic from CodeGenerator
+- [ ] Implement ClaudeRouter scaffold (returns NotImplementedError for now)
+- [ ] Add router factory function: get_router(llm_method) -> LLMRouter
+- [ ] Include docstrings and type hints
+- [ ] Add logging for router selection
+
+### 4.3: Refactor CodeGenerator
+- [ ] Read current CodeGenerator class in voice_to_code.py
+- [ ] Update __init__() to accept llm_router parameter
+- [ ] Extract _process_with_gemini logic into GeminiRouter
+- [ ] Keep custom_system_prompt parameter support
+- [ ] Update generate_code_from_context() to use router.process()
+- [ ] Ensure router receives: conversation, active_file, custom_system_prompt
+- [ ] Test: CodeGenerator still works with GeminiRouter
+
+### 4.4: Update Main Entry Point
+- [ ] Locate VoiceToCodeSystem initialization
+- [ ] Add LLM method selection (environment variable or default)
+- [ ] Create appropriate router based on selection
+- [ ] Pass router to CodeGenerator
+- [ ] Add logging for active LLM mode
+
+### 4.5: Stage 4 Testing
+- [ ] Import llm_router: python -c "from llm_router import get_router, GeminiRouter"
+- [ ] Start voice_to_code.py with Gemini (default)
+- [ ] Generate code via normal conversation flow
+- [ ] Verify custom_system_prompt works through router
+- [ ] Check logs show correct LLM router is active
+- [ ] Test code generation quality is unchanged
+- [ ] Verify no performance regression
+- [ ] Commit changes: "Stage 4: Implement LLM router for abstracted LLM handling"
+
+---
+
+## STAGE 5: Dependencies & Configuration Updates
+## Status: [ ] Not Started
+## Description: Update project dependencies for multi-LLM support
+
+### 5.1: Merge pyproject.toml
+- [ ] Read current pyproject.toml
+- [ ] Compare with feat/claude-mcp version
+- [ ] Identify new/changed dependencies
+- [ ] Ensure both Google and Anthropic packages included:
+  - google-generativeai (Gemini)
+  - anthropic (Claude)
+- [ ] Merge any version updates
+- [ ] Keep all existing optional dependencies (groq, openai, etc.)
+
+### 5.2: Update uv.lock
+- [ ] Run: uv sync
+- [ ] Review lock file for conflicts
+- [ ] Ensure all dependencies resolve correctly
+- [ ] Check for duplicate dependency versions
+
+### 5.3: Merge Other Configs
+- [ ] Check if .claude/settings.local.json needs environment setup
+- [ ] Verify any .env.example or configuration docs
+- [ ] Document any required API keys (GOOGLE_API_KEY, ANTHROPIC_API_KEY)
+
+### 5.4: Stage 5 Testing
+- [ ] Run: uv sync (no errors)
+- [ ] Verify imports: python -c "import google.generativeai; import anthropic"
+- [ ] Run: python voice_to_code.py --help (or similar)
+- [ ] Check for import errors on startup
+- [ ] Verify both Gemini and Claude clients available
+- [ ] Commit changes: "Stage 5: Update dependencies for multi-LLM support"
+
+---
+
+## STAGE 6: File Cleanup & Deprecation
+## Status: [ ] Not Started
+## Description: Clean up obsolete test files and archive unused code
+
+### 6.1: Remove Test Files
+- [ ] Delete: test_loopback.py (from current branch)
+- [ ] Delete: test_wasapi_loopback.py (from current branch)
+- [ ] Delete: test_websocket.py (from current branch)
+- [ ] Verify no code imports these files: grep -r "test_loopback\|test_wasapi\|test_websocket" --include="*.py"
+- [ ] Verify no references in imports
+
+### 6.2: Archive gemini_mcp_client.py
+- [ ] Create deprecated/ folder if not exists
+- [ ] Move gemini_mcp_client.py to deprecated/
+- [ ] Add deprecation notice at top:
+  ```python
+  # DEPRECATED: This file is no longer used
+  # Kept for historical reference
+  # LLM routing is now handled by llm_router.py
+  ```
+- [ ] Verify no code imports gemini_mcp_client: grep -r "gemini_mcp_client" --include="*.py"
+
+### 6.3: Remove Old HTML Files (from feat/claude-mcp)
+- [ ] Delete: electron-overlay/transcript_output.html (if exists)
+- [ ] Delete: electron-overlay/transcription_window.html (if exists)
+- [ ] Verify no references in custom_prompts.js or other files
+
+### 6.4: Merge TODO Files
+- [ ] Keep: expert.todo.txt (specific to expert system)
+- [ ] Merge: todo.txt updates from feat/claude-mcp
+- [ ] Do NOT delete expert.todo.txt
+
+### 6.5: Stage 6 Testing
+- [ ] Application still starts: python voice_to_code.py
+- [ ] No "ModuleNotFoundError" on startup
+- [ ] No import errors for deleted/moved files
+- [ ] Directory structure is clean
+- [ ] Verify deprecated/ folder contains only archived files
+- [ ] Commit changes: "Stage 6: Clean up test files and archive unused code"
+
+---
+
+## STAGE 7: Claude Desktop Integration
+## Status: [ ] Not Started
+## Description: Add Claude Desktop mode alongside Gemini
+
+### 7.1: Add Mode Detection
+- [ ] Create environment variable: PYSPY_LLM_MODE (default: "gemini")
+- [ ] Add config option for LLM selection in voice_to_code.py
+- [ ] Create helper function: get_llm_mode() -> "claude" | "gemini"
+- [ ] Add logging: "Starting with LLM mode: {mode}"
+
+### 7.2: Update VoiceToCodeSystem
+- [ ] Modify VoiceToCodeSystem.__init__() to accept llm_mode parameter
+- [ ] Create appropriate router based on mode
+- [ ] Pass router to CodeGenerator
+- [ ] Add mode info to startup output
+
+### 7.3: Create MCP Server Launcher
+- [ ] Check if mcp_server.py has proper startup/shutdown
+- [ ] Ensure MCP server can run independently
+- [ ] Add graceful shutdown handling
+- [ ] Test: python mcp_server.py starts and listens on proper endpoint
+
+### 7.4: Update Claude Desktop Config
+- [ ] Update .claude/settings.local.json with MCP server config
+- [ ] Point to: python mcp_server.py (running in subprocess)
+- [ ] Verify config is valid JSON
+- [ ] Test: Claude Desktop can discover MCP server
+
+### 7.5: Stage 7 Testing
+- [ ] Start with PYSPY_LLM_MODE=gemini (Gemini mode works)
+- [ ] Verify logs show: "Starting with LLM mode: gemini"
+- [ ] Test Gemini code generation
+- [ ] Start MCP server: python mcp_server.py
+- [ ] Verify MCP server initializes
+- [ ] Check MCP tools are available
+- [ ] Test: Can launch Claude Desktop
+- [ ] Verify Claude Desktop sees MCP server in config
+- [ ] No crashes on startup
+- [ ] Commit changes: "Stage 7: Add Claude Desktop integration and mode selection"
+
+---
+
+## STAGE 8: Integration Testing & Validation
+## Status: [ ] Not Started
+## Description: Full end-to-end testing of merged functionality
+
+### 8.1: Gemini Path Testing
+- [ ] Start: python voice_to_code.py (Gemini mode, default)
+- [ ] Verify audio capture initializes
+- [ ] Verify transcription works
+- [ ] Test full voice-to-code flow:
+  - Speak command
+  - Hear transcription
+  - Generate code
+  - Verify output
+- [ ] Test custom_system_prompt:
+  - Trigger with hotkey
+  - Pass custom prompt through MCP
+  - Verify code generation uses custom prompt
+- [ ] Test screenshot capture
+- [ ] Test transcript reading
+- [ ] Verify MCP resources accessible
+
+### 8.2: Claude Desktop Path Testing
+- [ ] Set: PYSPY_LLM_MODE=claude (if Claude router ready)
+- [ ] Or: Prepare for future Claude API integration
+- [ ] Start: python mcp_server.py
+- [ ] Verify MCP server is running
+- [ ] Open Claude Desktop
+- [ ] Verify server shows in Claude Desktop config
+- [ ] Test resource access:
+  - Can read transcripts
+  - Can view screenshots
+  - Can access prompt queue
+- [ ] Test tools:
+  - view_screenshot works
+  - check_prompt_queue works
+- [ ] Note: Full Claude code generation requires anthropic API integration (future)
+
+### 8.3: Cross-Mode Stability
+- [ ] Switch between modes without crashing
+- [ ] Verify logs show mode changes
+- [ ] Test configuration persistence
+- [ ] Verify no state leakage between modes
+
+### 8.4: Performance & Reliability
+- [ ] Run for 10+ minutes continuous operation
+- [ ] Monitor for memory leaks: top/Task Manager
+- [ ] Verify no hanging processes
+- [ ] Test graceful shutdown: Ctrl+C
+- [ ] Verify cleanup: all resources released
+- [ ] Check for orphaned file handles
+
+### 8.5: Documentation
+- [ ] Update README.md with multi-LLM info
+- [ ] Document: PYSPY_LLM_MODE environment variable
+- [ ] Add setup instructions for Claude Desktop
+- [ ] Document file cleanup and changes
+- [ ] Add troubleshooting section
+
+### 8.6: Final Verification
+- [ ] All tests pass
+- [ ] No regressions from original feat/expert-mcp
+- [ ] Application handles both LLM modes
+- [ ] MCP server works with Claude Desktop
+- [ ] Code quality maintained
+- [ ] Commit changes: "Stage 8: Complete integration testing and validation"
+
+### 8.7: Merge Cleanup
+- [ ] Create summary of changes
+- [ ] List any breaking changes (none expected)
+- [ ] Document deprecations:
+  - gemini_mcp_client.py moved to deprecated/
+  - test_*.py files removed
+- [ ] Mark merge as complete
+
+---
+
+## Rollback Plan
+
+If any stage fails, use this recovery procedure:
+
+### Quick Rollback
+1. Note which stage failed
+2. Identify the last successful commit
+3. Run: git reset --hard {last_successful_commit}
+4. Note the failure details
+5. Resume from failed stage with fixes
+
+### Reference Commits
+- Before Stage 1: `git log --oneline -1` (save this)
+- Before Stage 2: `git log --oneline -1` (save this)
+- etc.
+
+### Save Work In Progress
+- Before each stage: create backup branch
+  ```
+  git branch backup-before-stage-X
+  ```
+- If stage fails: `git reset --hard backup-before-stage-X`
+
+---
+
+## Progress Tracking
+
+Use this section to track completion:
+
+- [x] Plan created
+- [ ] Stage 1: Foundation Setup (Claude Desktop Config)
+- [ ] Stage 2: Enhanced MCP Server
+- [ ] Stage 3: Audio Capture Improvements
+- [ ] Stage 4: LLM Router Implementation
+- [ ] Stage 5: Dependencies & Configuration
+- [ ] Stage 6: File Cleanup & Deprecation
+- [ ] Stage 7: Claude Desktop Integration
+- [ ] Stage 8: Integration Testing & Validation
+- [ ] All stages complete - ready to merge to main
+
+---
+
+## Notes for Context Recovery
+
+If resuming work:
+
+1. Current branch: feat/expert-mcp
+2. Source branch: feat/claude-mcp (for reference)
+3. Golden base: feat/gemini-mcp (original)
+4. Main differences between feat/claude-mcp and feat/expert-mcp:
+   - MCP server enhancements (new tools, ImageContent)
+   - Claude Desktop configs
+   - Updated audio capture (keep expert-mcp version)
+   - Config.py flexibility
+   - Dependency updates
+
+5. Key preservation items:
+   - Keep custom_system_prompt support
+   - Keep WASAPI fix from expert-mcp
+   - Keep all existing Gemini functionality as default
+   - Remove test files (not needed)
+   - Archive gemini_mcp_client.py (not used)
+
+6. If implementing LLM Router in Stage 4:
+   - Extract existing Gemini logic into GeminiRouter
+   - Keep CodeGenerator as orchestrator
+   - Make router pluggable for future LLMs
+   - Ensure custom_system_prompt flows through router
+
+7. Git workflow:
+   - Make one commit per stage
+   - Test thoroughly before moving to next stage
+   - Keep commits atomic and reversible
+
+---
+
+## Contact & Debugging
+
+If stuck on a stage:
+1. Note the exact error message
+2. Check which files were modified in that stage
+3. Compare against feat/claude-mcp for reference
+4. Review the test checklist for that stage
+5. Run git diff feat/expert-mcp feat/claude-mcp for specific file insights
+
+Current datetime: 2025-12-03
+Branch: feat/expert-mcp
+Status: Ready to begin Stage 1

@@ -6,7 +6,8 @@
       "Bash(uv pip install:*)",
       "Bash(python -c:*)",
       "Bash(pip install:*)",
-      "Bash(timeout 10 python:*)"
+      "Bash(timeout 10 python:*)",
+      "Bash(git ls-tree:*)"
     ],
     "deny": [],
     "ask": []
