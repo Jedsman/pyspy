@@ -253,8 +253,12 @@ ipcMain.on('close-screenshot', async (event, selection) => {
 // 3. Save the captured data URL to a file
 ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destinations) => {
     try {
-        // Default to both destinations if not provided
-        const dests = destinations || { gemini: true, claude: true };
+        // Default to both destinations if not provided or invalid
+        let dests = { gemini: true, claude: true };
+        if (destinations && typeof destinations === 'object') {
+            dests = destinations;
+        }
+        console.log(`[SAVE-SCREENSHOT] Destinations received: ${JSON.stringify(dests)}`);
 
         // Use the path from the .env file, or a default if not provided.
         const screenshotsDir = process.env.SCREENSHOT_PATH || path.join(__dirname, '..', 'generated_code', 'screenshots');
@@ -278,37 +282,33 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destin
             fs.writeFileSync(promptFilePath, promptText, 'utf-8');
             console.log(`Saved prompt metadata: ${promptFileName}`);
 
-            // Write to .command file for Gemini if enabled
-            if (dests.gemini) {
-                const commandFilePath = path.join(generatedCodeDir, '.command');
-                const commandData = {
-                    command: 'analyze_screenshot',
-                    prompt: promptText,
-                    screenshot_path: filePath
-                };
-                fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
-                console.log('Added to .command file: analyze_screenshot');
+            // Always write to .command file for Gemini (backwards compatibility)
+            const commandFilePath = path.join(generatedCodeDir, '.command');
+            const commandData = {
+                command: 'analyze_screenshot',
+                prompt: promptText,
+                screenshot_path: filePath
+            };
+            fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
+            console.log('[SAVE-SCREENSHOT] Added to .command file: analyze_screenshot');
+
+            // Always write to .prompt_queue.json for Claude Desktop (new feature)
+            const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
+            let queue = [];
+            if (fs.existsSync(queueFilePath)) {
+                const queueData = fs.readFileSync(queueFilePath, 'utf-8');
+                queue = JSON.parse(queueData);
             }
 
-            // Add to .prompt_queue.json for Claude Desktop MCP server if enabled
-            if (dests.claude) {
-                const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
-                let queue = [];
-                if (fs.existsSync(queueFilePath)) {
-                    const queueData = fs.readFileSync(queueFilePath, 'utf-8');
-                    queue = JSON.parse(queueData);
-                }
+            queue.push({
+                filename: fileName,
+                prompt: promptText,
+                timestamp: new Date().toISOString(),
+                type: 'screenshot'
+            });
 
-                queue.push({
-                    filename: fileName,
-                    prompt: promptText,
-                    timestamp: new Date().toISOString(),
-                    type: 'screenshot'
-                });
-
-                fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
-                console.log(`Added to .prompt_queue.json: ${fileName}`);
-            }
+            fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
+            console.log(`[SAVE-SCREENSHOT] Added to .prompt_queue.json: ${fileName}`);
         }
 
         return { success: true, fileName: fileName, path: filePath }; // Return both for flexibility
@@ -321,44 +321,44 @@ ipcMain.handle('save-screenshot-data', async (event, dataUrl, promptText, destin
 // Handle adhoc text prompts (for 'copy' action prompts)
 ipcMain.handle('send-adhoc-prompt', async (event, promptText, destinations) => {
     try {
-        // Default to both destinations if not provided
-        const dests = destinations || { gemini: true, claude: true };
+        // Default to both destinations if not provided or invalid
+        let dests = { gemini: true, claude: true };
+        if (destinations && typeof destinations === 'object') {
+            dests = destinations;
+        }
+        console.log(`[SEND-ADHOC] Destinations received: ${JSON.stringify(dests)}`);
 
         const generatedCodeDir = process.env.GENERATED_CODE_PATH || path.join(__dirname, '..', 'generated_code');
 
-        // Write .command file for Gemini if enabled
-        if (dests.gemini) {
-            const commandFilePath = path.join(generatedCodeDir, '.command');
-            const commandData = {
-                command: 'analyze_text_prompt',
-                prompt: promptText
-            };
-            fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
-            console.log('Added to .command file: analyze_text_prompt');
+        // Always write .command file for Gemini (backwards compatibility)
+        const commandFilePath = path.join(generatedCodeDir, '.command');
+        const commandData = {
+            command: 'analyze_text_prompt',
+            prompt: promptText
+        };
+        fs.writeFileSync(commandFilePath, JSON.stringify(commandData), 'utf-8');
+        console.log('[SEND-ADHOC] Added to .command file: analyze_text_prompt');
+
+        // Always write to .prompt_queue.json for Claude Desktop (new feature)
+        const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
+        let queue = [];
+        if (fs.existsSync(queueFilePath)) {
+            const queueData = fs.readFileSync(queueFilePath, 'utf-8');
+            queue = JSON.parse(queueData);
         }
 
-        // Append to .prompt_queue.json for Claude Desktop if enabled
-        if (dests.claude) {
-            const queueFilePath = path.join(generatedCodeDir, '.prompt_queue.json');
-            let queue = [];
-            if (fs.existsSync(queueFilePath)) {
-                const queueData = fs.readFileSync(queueFilePath, 'utf-8');
-                queue = JSON.parse(queueData);
-            }
+        queue.push({
+            prompt: promptText,
+            timestamp: new Date().toISOString(),
+            type: 'adhoc'
+        });
 
-            queue.push({
-                prompt: promptText,
-                timestamp: new Date().toISOString(),
-                type: 'adhoc'
-            });
-
-            fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
-            console.log('Added to .prompt_queue.json: adhoc text prompt');
-        }
+        fs.writeFileSync(queueFilePath, JSON.stringify(queue, null, 2), 'utf-8');
+        console.log('[SEND-ADHOC] Added to .prompt_queue.json: adhoc text prompt');
 
         return { success: true };
     } catch (error) {
-        console.error('Failed to send adhoc prompt:', error);
+        console.error('[SEND-ADHOC] Failed to send adhoc prompt:', error);
         return { success: false, error: error.message };
     }
 });
