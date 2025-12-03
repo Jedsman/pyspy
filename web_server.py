@@ -926,6 +926,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     else:
                         print(f"⚠️  Invalid code generation action: {action}")
 
+                elif message_type == 'mute_toggle':
+                    muted = data.get('muted', False)
+                    command_data = {
+                        "command": "mute_toggle",
+                        "muted": muted
+                    }
+                    COMMAND_FILE.write_text(json.dumps(command_data))
+                    print(f"🔇 Transcriptions {'muted' if muted else 'unmuted'}")
+
             except json.JSONDecodeError:
                 print(f"Received non-JSON message: {message_text}")
             except Exception as e:

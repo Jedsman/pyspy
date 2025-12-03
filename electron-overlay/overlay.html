@@ -1035,7 +1035,10 @@
                 <div class="transcript-right-column">
                     <div class="transcript-header">
                         <span>📝 Transcript</span>
-                        <button class="transcript-clear-btn" onclick="clearTranscript()">Clear</button>
+                        <div style="display: flex; gap: 5px;">
+                            <button id="transcriptMuteBtn" class="transcript-clear-btn" onclick="toggleTranscriptMute()" title="Mute/unmute transcriptions">🔊 Mute</button>
+                            <button class="transcript-clear-btn" onclick="clearTranscript()">Clear</button>
+                        </div>
                     </div>
 
                     <div class="live-buffer" id="liveBuffer">
@@ -1127,6 +1130,7 @@
         let activeFile = null;
         let reconnectTimer = null;
         let transcriptSegments = [];
+        let transcriptMuted = false;
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -1666,6 +1670,11 @@
         }
 
         function addTranscriptSegment(speaker, text, timestamp) {
+            // Skip adding if transcriptions are muted
+            if (transcriptMuted) {
+                return;
+            }
+
             // Remove empty state if present
             const emptyState = transcriptContent.querySelector('.transcript-empty');
             if (emptyState) {
@@ -1733,6 +1742,26 @@
         function clearTranscript() {
             transcriptSegments = [];
             transcriptContent.innerHTML = '<div class="transcript-empty">No segments captured yet...</div>';
+        }
+
+        function toggleTranscriptMute() {
+            transcriptMuted = !transcriptMuted;
+            const btn = document.getElementById('transcriptMuteBtn');
+            if (transcriptMuted) {
+                btn.textContent = '🔇 Unmute';
+                btn.style.background = '#666';
+            } else {
+                btn.textContent = '🔊 Mute';
+                btn.style.background = '';
+            }
+
+            // Send mute status to backend
+            const server = serverInput.value || 'localhost';
+            fetch(`http://${server}:5000/api/broadcast/command`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: 'mute_toggle', muted: transcriptMuted })
+            }).catch(err => console.error('Failed to send mute command:', err));
         }
 
         function updateLiveBuffer(buffer) {

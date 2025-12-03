@@ -691,6 +691,9 @@ class VoiceToCodeSystem:
         # Flag to track if transcript window is open (for manual mode)
         self.transcript_window_open = False
 
+        # Flag to track if transcriptions are muted in manual mode
+        self.transcriptions_muted = False
+
         # Spinner for listening indicator
         self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
         self.spinner_index = 0
@@ -844,6 +847,12 @@ class VoiceToCodeSystem:
                 print(f"\n📄 Transcript window closed - switching to auto mode")
                 self.transcript_window_open = False
 
+            elif command == "mute_toggle":
+                muted = command_dict.get("muted", False)
+                self.transcriptions_muted = muted
+                status = "🔇 Transcriptions muted" if muted else "🔊 Transcriptions unmuted"
+                print(f"\n{status}")
+
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
             pass
@@ -991,6 +1000,10 @@ class VoiceToCodeSystem:
 
     def send_transcript_segment(self, speaker: str, text: str):
         """Send transcript segment to web server for overlay display"""
+        # Skip sending if transcriptions are muted
+        if self.transcriptions_muted:
+            return
+
         # Write to file for web server to pick up
         transcript_file = Path("generated_code") / ".transcript"
         try:

@@ -58,7 +58,8 @@ function createTranscriptWindow() {
         },
     });
 
-    transcriptWindow.loadFile('transcription_window.html');
+    const transcriptWindowPath = path.join(__dirname, 'transcription_window.html');
+    transcriptWindow.loadFile(transcriptWindowPath);
     // transcriptWindow.webContents.openDevTools({ mode: 'detach' });
 
     // Notify backend that transcript window is opened

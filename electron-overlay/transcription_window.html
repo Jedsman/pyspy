@@ -49,11 +49,31 @@
         input[type="checkbox"] {
             margin-right: 5px;
         }
+        #mute-button {
+            background: #d32f2f !important;
+            padding: 8px 16px !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 3px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            font-weight: bold !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 1000 !important;
+        }
+        #mute-button:hover {
+            background: #b71c1c !important;
+        }
     </style>
 </head>
 <body>
 
-    <h2>Interviewer Transcript</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px;">
+        <h2 style="margin: 0; flex: 1;">Interviewer Transcript</h2>
+        <button id="mute-button">🔊 Mute</button>
+    </div>
 
     <div id="transcript-container">
         <!-- Transcript boxes will be inserted here -->
@@ -62,7 +82,9 @@
     <script>
         let ws = null;
         let reconnectTimer = null;
+        let isMuted = false;
         const transcriptContainer = document.getElementById('transcript-container');
+        const muteButton = document.getElementById('mute-button');
 
         function connect() {
             if (ws) {
@@ -82,7 +104,7 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'transcript' && data.speaker === 'Partner') {
+                    if (data.type === 'transcript' && data.speaker === 'Partner' && !isMuted) {
                         addTranscriptBox(data.text);
                     }
                 } catch (e) {
@@ -176,6 +198,24 @@
                 alert('Error: Not connected to the server. Cannot send request.');
             }
         }
+
+        muteButton.addEventListener('click', () => {
+            isMuted = !isMuted;
+            if (isMuted) {
+                muteButton.textContent = '🔇 Unmute';
+                muteButton.style.background = '#666';
+            } else {
+                muteButton.textContent = '🔊 Mute';
+                muteButton.style.background = '#d32f2f';
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'mute_toggle',
+                    muted: isMuted
+                }));
+            }
+        });
 
         // Initial connection
         connect();
