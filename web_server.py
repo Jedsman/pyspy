@@ -207,6 +207,10 @@ class CodeFileHandler(FileSystemEventHandler):
 
     async def broadcast_file_update(self, filepath: Path, action: str):
         """Read file content and broadcast to all connected clients"""
+        # Skip control files (dot files)
+        if filepath.name.startswith('.'):
+            return
+
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -837,7 +841,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if load_existing and GENERATED_CODE_DIR.exists():
             for filepath in sorted(GENERATED_CODE_DIR.glob("*"), key=lambda p: p.stat().st_mtime):
-                if filepath.is_file():
+                # Skip control files (dot files)
+                if filepath.is_file() and not filepath.name.startswith('.'):
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             content = f.read()
@@ -903,6 +908,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
                         COMMAND_FILE.write_text(json.dumps(command_data))
                         print(f"✅ Relayed 'gemini_coach_request' command.")
+
+                elif message_type == 'code_generation_request':
+                    action = data.get('action')  # 'new_code' or 'update_code'
+                    prompt = data.get('prompt', '')
+                    transcripts = data.get('transcripts', '')
+
+                    if action in ['new_code', 'update_code']:
+                        command_data = {
+                            "command": "code_generation_request",
+                            "action": action,
+                            "prompt": prompt,
+                            "transcripts": transcripts
+                        }
+                        COMMAND_FILE.write_text(json.dumps(command_data))
+                        print(f"✅ Relayed 'code_generation_request' command with action: {action}")
+                    else:
+                        print(f"⚠️  Invalid code generation action: {action}")
 
             except json.JSONDecodeError:
                 print(f"Received non-JSON message: {message_text}")

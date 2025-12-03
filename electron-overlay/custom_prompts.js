@@ -10,76 +10,90 @@ const MARKDOWN_SYSTEM_PROMPT = 'Your response should be very short and concise a
 const DEFAULT_PROMPTS = [
     {
         id: 'default-1',
+        icon: '✨',
+        label: 'Generate New Code',
+        prompt: 'Based on the transcript of our conversation, write complete, production-ready code that implements the requirements discussed. Include proper error handling, comments for complex logic, and follow best practices for the language.',
+        action: 'new_code'
+    },
+    {
+        id: 'default-2',
+        icon: '🔄',
+        label: 'Update Existing Code',
+        prompt: 'Based on the transcript of our conversation and any feedback or new requirements mentioned, update and improve the existing code. Make only the necessary changes and explain what was modified.',
+        action: 'update_code'
+    },
+    {
+        id: 'default-3',
         icon: '🤔',
         label: 'Explain This Code',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Explain in simple, easy-to-understand terms what the code is doing, its main purpose, and how it works. Structure the explanation as a few clear bullet points.',
         action: 'capture'
     },
     {
-        id: 'default-2',
+        id: 'default-4',
         icon: '🐞',
         label: 'Find Bugs',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Identify potential bugs, logical errors, or race conditions. Show any issues found as comments in the code along with a solution. Very briefly explain why each one is problematic.',
         action: 'capture'
     },
     {
-        id: 'default-3',
+        id: 'default-5',
         icon: '✨',
         label: 'Suggest Improvements',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Suggest 3-4 key improvements focusing on readability, performance, and best practices. Provide a bullet-point list of suggestions with brief justifications.',
         action: 'capture'
     },
     {
-        id: 'default-4',
+        id: 'default-6',
         icon: '♻️',
         label: 'Refactor This Code',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Provide a refactored version of the code that is cleaner and more idiomatic. After the code block, briefly explain the key changes you made and why they are improvements.',
         action: 'capture'
     },
     {
-        id: 'default-5',
+        id: 'default-7',
         icon: '🧪',
         label: 'Write Unit Tests',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. It may be a code snippet and not include all elements required to execute. Write a concise set of unit tests for this code. Cover the main logic, at least two important edge cases, and provide comments explaining what each test case is verifying.',
         action: 'capture'
     },
     {
-        id: 'default-6',
+        id: 'default-8',
         icon: '✍️',
         label: 'Write Code from Transcript',
         prompt: 'I am in a coding interview. Based on the following transcript, write the complete code file that fulfills the request. The code should be clean, well-structured, and include comments for complex logic. Provide the full, ready-to-use file content, not just a snippet.',
         action: 'copy'
     },
     {
-        id: 'default-7',
+        id: 'default-9',
         icon: '🎯',
         label: 'Analyze Transcript for Plan',
         prompt: 'I am in a coding interview. Based on the following transcript, what is the primary goal? Create a concise, step-by-step plan for me to follow to implement the feature or fix the bug. Format the output as a simple checklist.',
         action: 'copy'
     },
     {
-        id: 'default-8',
+        id: 'default-10',
         icon: '🗣️',
         label: 'Prep for Behavioral Question',
         prompt: 'I am in a coding interview. The interviewer just asked the question(s) in the transcript below. Generate 3-5 concise, tactical talking points to help me structure my answer effectively. Format them as bullet points starting with action verbs.',
         action: 'copy'
     },
     {
-        id: 'default-9',
+        id: 'default-11',
         icon: '⏱️',
         label: 'Analyze Complexity',
         prompt: 'I am in a coding interview. Use the provided screenshot to analyze the code shown. What is the time and space complexity (Big O notation) of this code? Provide a brief, easy-to-understand explanation for your answer.',
         action: 'capture'
     },
     {
-        id: 'default-10',
+        id: 'default-12',
         icon: '❓',
         label: 'Suggest Follow-up Questions',
         prompt: 'I am in a coding interview and just finished discussing the code in the screenshot. What are 2-3 insightful follow-up questions I could ask the interviewer about the code or related architecture to show my curiosity and deeper understanding?',
         action: 'capture'
     },
     {
-        id: 'default-11',
+        id: 'default-13',
         icon: '📚',
         label: 'Generate Documentation',
         prompt: 'I am in a coding interview. Use the provided screenshot to generate a clear and concise documentation block (like JSDoc, Python Docstring, etc.) for the function or class shown. Include a brief description, parameters, and what it returns.',
@@ -239,14 +253,20 @@ async function handlePromptClick(id) {
     const fullPrompt = prompt.prompt + '\n\n' + MARKDOWN_SYSTEM_PROMPT;
 
     if (prompt.action === 'capture') {
-        // New "Capture" behavior
+        // Capture behavior - take screenshot and analyze
         console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
-        // Store the prompt text so the capture handler can find it
         window.sessionStorage.setItem('analysisPrompt', fullPrompt);
-        // Start the screenshot process
         window.electronAPI.startScreenshot();
+    } else if (prompt.action === 'new_code') {
+        // Trigger code generation from transcript with selected transcripts
+        console.log(`Triggering new code generation: "${prompt.label}"`);
+        triggerCodeGenerationWithTranscripts('new_code', prompt.prompt);
+    } else if (prompt.action === 'update_code') {
+        // Trigger code update from transcript with selected transcripts
+        console.log(`Triggering code update: "${prompt.label}"`);
+        triggerCodeGenerationWithTranscripts('update_code', prompt.prompt);
     } else {
-        // New "Send Text" behavior for prompts with 'copy' action
+        // Send Text behavior for prompts with 'copy' action
         console.log(`Sending text prompt: "${prompt.label}"`);
         if (ws && ws.readyState === WebSocket.OPEN) {
             const message = {
@@ -259,6 +279,49 @@ async function handlePromptClick(id) {
             console.error('WebSocket not connected. Cannot send prompt.');
             showNotification('❌ WebSocket not connected.');
         }
+    }
+}
+
+async function triggerCodeGenerationWithTranscripts(action, promptText) {
+    // Get selected transcript segments
+    const checkboxes = document.querySelectorAll('.transcript-checkbox:checked');
+    if (checkboxes.length === 0) {
+        showNotification('⚠️ No transcripts selected!');
+        return;
+    }
+
+    // Collect selected transcript texts
+    const selectedTranscripts = [];
+    checkboxes.forEach(checkbox => {
+        const segmentId = checkbox.dataset.segmentId;
+        const segment = transcriptSegments.find(s => s.id === segmentId);
+        if (segment) {
+            selectedTranscripts.push(`[${segment.speaker}]: ${segment.text}`);
+        }
+    });
+
+    if (selectedTranscripts.length === 0) {
+        showNotification('⚠️ Could not find transcript data!');
+        return;
+    }
+
+    // Send code generation request via WebSocket
+    // Backend will prepend gemini_code_gen.md system prompt
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'code_generation_request',
+            action: action,
+            prompt: promptText,
+            transcripts: selectedTranscripts.join('\n\n')
+        };
+        ws.send(JSON.stringify(message));
+        showNotification(`✓ ${action === 'new_code' ? 'Generating new code' : 'Updating code'}...`);
+
+        // Uncheck all checkboxes
+        checkboxes.forEach(cb => cb.checked = false);
+    } else {
+        console.error('WebSocket not connected. Cannot send code generation request.');
+        showNotification('❌ WebSocket not connected.');
     }
 }
 

@@ -4,7 +4,9 @@
       "Bash(uv run:*)",
       "Bash(uv sync:*)",
       "Bash(uv pip install:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(pip install:*)",
+      "Bash(timeout 10 python:*)"
     ],
     "deny": [],
     "ask": []

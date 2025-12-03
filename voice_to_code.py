@@ -469,27 +469,28 @@ class CodeGenerator:
         print(f"\n📝 {transcript_text}")
         self.conversation_history.append(transcript_text)
 
-    def generate_code_from_context(self):
+    def generate_code_from_context(self, custom_system_prompt=None):
         """Processes the conversation history and active file to generate/update code."""
-        if not self.conversation_history:
+        if not custom_system_prompt and not self.conversation_history:
             print("🤖 LLM: No conversation history to process.")
             return
 
         print("\n🤖 Processing context to generate/update code...")
-        
+
         active_file_content = None
         if self.active_file_path and self.active_file_path.exists():
             print(f"📝 Reading active file: {self.active_file_path.name}")
             with open(self.active_file_path, 'r', encoding='utf-8') as f:
                 active_file_content = f.read()
 
-        conversation = "\n".join(self.conversation_history)
+        conversation = custom_system_prompt if custom_system_prompt else "\n".join(self.conversation_history)
 
         try:
             if self.llm_method == LLMMethod.GEMINI:
                 response = self._process_with_gemini(
-                    conversation=conversation, 
-                    active_file_content=active_file_content
+                    conversation=conversation,
+                    active_file_content=active_file_content,
+                    use_custom_prompt=bool(custom_system_prompt)
                 )
 
                 # Check if the model decided to call the function
@@ -517,20 +518,25 @@ class CodeGenerator:
         except Exception as e:
             print(f"❌ LLM processing error: {e}")
 
-    def _process_with_gemini(self, conversation: str, active_file_content: str | None = None):
+    def _process_with_gemini(self, conversation: str, active_file_content: str | None = None, use_custom_prompt: bool = False):
         """Process with Gemini API using Function Calling."""
         print("📡 Building prompt and sending request to Gemini API...")
 
-        prompt_parts = [self.system_prompt]
+        if use_custom_prompt:
+            # Custom prompt already includes system prompt + custom instructions + transcripts
+            prompt = conversation
+        else:
+            # Normal flow: build prompt from system prompt + conversation
+            prompt_parts = [self.system_prompt]
 
-        if active_file_content:
-            prompt_parts.append(f"ACTIVE FILE: `{self.active_file_path.name}`\n---\n```\n{active_file_content}\n```\n---")
+            if active_file_content:
+                prompt_parts.append(f"ACTIVE FILE: `{self.active_file_path.name}`\n---\n```\n{active_file_content}\n```\n---")
 
-        prompt_parts.append(f"CONVERSATION HISTORY:\n---\n{conversation}\n---")
-        
-        prompt_parts.append("Based on the conversation, you must now call the `GenerateFiles` tool to produce the required code file(s).")
+            prompt_parts.append(f"CONVERSATION HISTORY:\n---\n{conversation}\n---")
 
-        prompt = "\n".join(prompt_parts)
+            prompt_parts.append("Based on the conversation, you must now call the `GenerateFiles` tool to produce the required code file(s).")
+
+            prompt = "\n".join(prompt_parts)
         
         if os.getenv("DEBUG", "false").lower() == "true":
             print(f"🔍 --- PROMPT START ---\n{prompt}\n🔍 --- PROMPT END ---")
@@ -665,22 +671,18 @@ class VoiceToCodeSystem:
                  vad_aggressiveness=2,
                  generation_hotkey="ctrl+shift+g",
                  update_hotkey="ctrl+shift+s",
-                 mode_switch_hotkey="ctrl+shift+m",
                  capture_hotkey="ctrl+shift+c",
                  edit_keyword="edit file",
-                 close_keyword="close file",
-                 coach_mode=False):
+                 close_keyword="close file"):
         self.audio_capture = AudioCapture(source=audio_source)
         self.edit_keyword = edit_keyword.lower()
         self.close_keyword = close_keyword.lower()
         self.generation_hotkey = generation_hotkey
         self.update_hotkey = update_hotkey
-        self.mode_switch_hotkey = mode_switch_hotkey
         self.capture_hotkey = capture_hotkey
         self.debug = debug
         self.transcript_only = transcript_only
         self.audio_source = audio_source
-        self.coach_mode = coach_mode
         self.llm_method = llm_method
 
         # Live transcript buffer for manual capture
@@ -698,16 +700,13 @@ class VoiceToCodeSystem:
 
         self.transcriber = SpeechTranscriber(method=transcription_method)
 
-        # Initialize appropriate mode
-        if coach_mode:
-            self.interview_coach = InterviewCoach()
-            self.code_generator = None
-        elif not transcript_only:
+        # Always initialize coach mode for coaching suggestions
+        self.interview_coach = InterviewCoach()
+        # Keep code generator available for new_code/update_code actions
+        if not transcript_only:
             self.code_generator = CodeGenerator(llm_method=llm_method)
-            self.interview_coach = None
         else:
             self.code_generator = None
-            self.interview_coach = None
 
         self.silence_timeout = silence_timeout
         # Recalculate based on chunk size and sample rate (approximate)
@@ -787,10 +786,6 @@ class VoiceToCodeSystem:
             elif command == "update":
                 print(f"\n🌐 Remote Update command received!")
                 self.on_update_hotkey_press()
-            elif command == "toggle_mode":
-                print(f"\n🌐 Remote Mode Toggle command received!")
-                self.toggle_mode()
-                print(f"DEBUG: toggle_mode() function completed.") # Added debug log
             elif command == "capture_transcript":
                 print(f"\n🌐 Remote Capture Transcript command received!")
                 self.capture_transcript_segment()
@@ -814,6 +809,32 @@ class VoiceToCodeSystem:
                 if text:
                     print(f"\n🧠 Remote Gemini Coach Request command received!")
                     self.handle_gemini_coach_request(text)
+
+            elif command == "code_generation_request":
+                action = command_data.get("action")
+                prompt = command_data.get("prompt", "")
+                transcripts = command_data.get("transcripts", "")
+
+                # Load gemini_code_gen.md system prompt
+                code_gen_prompt_path = Path("prompts") / "gemini_code_gen.md"
+                if code_gen_prompt_path.exists():
+                    gemini_system_prompt = code_gen_prompt_path.read_text(encoding='utf-8')
+                else:
+                    gemini_system_prompt = ""
+
+                # Combine: gemini_code_gen.md + custom prompt + transcripts
+                full_prompt = gemini_system_prompt
+                if prompt:
+                    full_prompt += f"\n\n{prompt}"
+                if transcripts:
+                    full_prompt += f"\n\n{transcripts}"
+
+                if action == "new_code":
+                    print(f"\n✨ Generate New Code from custom prompt received!")
+                    self.on_generate_hotkey_press(custom_prompt=full_prompt)
+                elif action == "update_code":
+                    print(f"\n🔄 Update Code from custom prompt received!")
+                    self.on_update_hotkey_press(custom_prompt=full_prompt)
 
             elif command == "transcript_window_opened":
                 print(f"\n📄 Transcript window opened - switching to manual mode")
@@ -846,9 +867,12 @@ class VoiceToCodeSystem:
             print(f"❌ Failed to send trigger to web server: {e}")
             print("   Is the web server running? You can start it with: python web_server.py")
 
-    def on_generate_hotkey_press(self):
+    def on_generate_hotkey_press(self, custom_prompt=None):
         """Called to generate a NEW file, starting a fresh session."""
-        print(f"\n⌨️  New File Hotkey pressed! Generating new file...")
+        if custom_prompt:
+            print(f"\n✨ Generate New Code from custom prompt!")
+        else:
+            print(f"\n⌨️  New File Hotkey pressed! Generating new file...")
         if not self.code_generator: return
 
         # Start listening if not already enabled
@@ -888,8 +912,11 @@ class VoiceToCodeSystem:
             # Clear any active file to ensure we create a NEW file (not update existing)
             self.code_generator.active_file_path = None
 
-            # Generate code with current context
-            self.code_generator.generate_code_from_context()
+            # Generate code with current context or custom prompt
+            if custom_prompt:
+                self.code_generator.generate_code_from_context(custom_system_prompt=custom_prompt)
+            else:
+                self.code_generator.generate_code_from_context()
 
             # Note: Context is NOT cleared here - it persists for refinement
             # Use "close file" voice command to explicitly clear context when starting fresh
@@ -898,12 +925,15 @@ class VoiceToCodeSystem:
             import traceback
             traceback.print_exc()
 
-    def on_update_hotkey_press(self):
+    def on_update_hotkey_press(self, custom_prompt=None):
         """Called to UPDATE the active file."""
-        print(f"\n💾 Update Hotkey pressed! Triggering file update...")
+        if custom_prompt:
+            print(f"\n🔄 Update Code from custom prompt!")
+        else:
+            print(f"\n💾 Update Hotkey pressed! Triggering file update...")
         if not self.code_generator: return
 
-        if not self.code_generator.active_file_path:
+        if not custom_prompt and not self.code_generator.active_file_path:
             print("⚠️  No active file to update. Use 'edit file [filename]' to select one first.")
             return
 
@@ -932,8 +962,11 @@ class VoiceToCodeSystem:
                         break
                     time.sleep(0.1)
 
-            # The hotkey is the trigger, it shouldn't be part of the context.
-            self.code_generator.generate_code_from_context()
+            # Generate code with current context or custom prompt
+            if custom_prompt:
+                self.code_generator.generate_code_from_context(custom_system_prompt=custom_prompt)
+            else:
+                self.code_generator.generate_code_from_context()
         except Exception as e:
             print(f"❌ Error in update hotkey callback: {e}")
             import traceback
@@ -1031,59 +1064,17 @@ class VoiceToCodeSystem:
         except Exception as e:
             print(f"⚠️  Failed to save transcript to history: {e}")
 
-    def toggle_mode(self):
-        """Toggle between Code Generation mode and Interview Coach mode"""
-        print(f"\n🔄 Toggling mode...")
-
-        # Toggle the mode flag
-        self.coach_mode = not self.coach_mode
-
-        if self.coach_mode:
-            # Switching to Coach Mode
-            print("🎯 Switching to Interview Coach Mode...")
-            self.code_generator = None
-            self.interview_coach = InterviewCoach()
-            mode_name = "Coach"
-
-            # Start audio capture if not already listening
-            if not self.listening_enabled:
-                self.listening_enabled = True
-                print("🎙️  Starting audio capture for coach mode...")
-                self.audio_capture.start_capture(
-                    mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
-                    system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
-                )
-        else:
-            # Switching to Code Generation Mode
-            print("💻 Switching to Code Generation Mode...")
-            self.interview_coach = None
-            self.code_generator = CodeGenerator(llm_method=self.llm_method)
-            mode_name = "Code"
-
-        # Notify web server of mode change
-        mode_file = GENERATED_CODE_DIR / ".current_mode"
-        try:
-            data = {
-                "mode": mode_name,
-                "timestamp": datetime.now().isoformat()
-            }
-            mode_file.write_text(json.dumps(data, indent=2))
-            print(f"DEBUG: Wrote to .current_mode file: {mode_file.name} with content: {json.dumps(data, indent=2)}") # Added debug log
-        except Exception as e:
-            print(f"⚠️  Failed to write mode change: {e}")
-
-        print(f"✅ Now in {mode_name} Mode")
 
     def _perform_gemini_analysis_in_thread(self, prompt: str, image_path_obj: Path):
         """
         Helper function to run the blocking Gemini API call in a separate thread.
         """
         print("DEBUG: _perform_gemini_analysis_in_thread started")
-        
+
         try:
             # --- This logic is now inside the thread ---
             model_to_use = None
-            if self.coach_mode and self.interview_coach and self.interview_coach.gemini_model:
+            if self.interview_coach and self.interview_coach.gemini_model:
                 model_to_use = self.interview_coach.gemini_model
             else:
                 temp_coach = InterviewCoach()
@@ -1212,7 +1203,7 @@ class VoiceToCodeSystem:
         """
         try:
             model_to_use = None
-            if self.coach_mode and self.interview_coach and self.interview_coach.gemini_model:
+            if self.interview_coach and self.interview_coach.gemini_model:
                 model_to_use = self.interview_coach.gemini_model
             else:
                 temp_coach = InterviewCoach()
@@ -1353,7 +1344,7 @@ class VoiceToCodeSystem:
 
                 if self.transcript_only:
                     print(f"\n📝 {labeled_transcript}")
-                elif self.coach_mode:
+                else:
                     print(f"\n📝 {labeled_transcript}")
 
                     # Check if transcript window is open (manual mode)
@@ -1390,13 +1381,6 @@ class VoiceToCodeSystem:
                             self.send_coach_suggestions(transcript, suggestions)
                         else:  # Candidate response
                             self.interview_coach.add_to_conversation("You", transcript)
-                else:
-                    # Code generation mode
-                    # Always add the full transcript to context first
-                    self.code_generator.update_context(labeled_transcript)
-
-                    # Then, check for keyword commands in the transcript
-                    self.process_transcript_for_commands(transcript)
 
         finally:
             if temp_file.exists(): temp_file.unlink()
@@ -1406,12 +1390,10 @@ class VoiceToCodeSystem:
     def start(self):
         """Start the voice-to-code system"""
         print("\n" + "="*60)
-        if self.coach_mode:
-            print("🎯 INTERVIEW COACH MODE")
-        elif self.transcript_only:
+        if self.transcript_only:
             print("🚀 TRANSCRIPT-ONLY MODE")
         else:
-            print("🚀 CONTEXT-AWARE VOICE-TO-CODE SYSTEM")
+            print("🎯 INTERVIEW COACH MODE + CODE GENERATION")
         print("="*60)
 
         # Show audio sources
@@ -1420,13 +1402,7 @@ class VoiceToCodeSystem:
         else:
             print(f"\n🎧 Single Audio Mode: {self.audio_source.value}")
 
-        if self.coach_mode:
-            print("\n💡 Interview Coach will provide real-time suggestions for interviewer questions.")
-            print("\n📋 System will listen to the interview and generate tactical response guidance.")
-            print("   - Interviewer questions → AI generates talking points")
-            print("   - Your responses → Tracked for context")
-            print("   - Suggestions appear in console and overlay")
-        elif self.transcript_only:
+        if self.transcript_only:
             print("\n📋 System will transcribe and display conversation in real-time.")
             print("\n💡 Code generation is DISABLED.")
         else:
@@ -1445,18 +1421,13 @@ class VoiceToCodeSystem:
             # Register keyboard hotkeys if needed
             if not self.transcript_only and KEYBOARD_AVAILABLE:
                 try:
-                    # Code generation hotkeys (only if not in coach mode)
-                    if not self.coach_mode:
-                        keyboard.add_hotkey(self.generation_hotkey, self.on_generate_hotkey_press)
-                        print(f"✅ Hotkey '{self.generation_hotkey}' registered for new files.")
-                        keyboard.add_hotkey(self.update_hotkey, self.on_update_hotkey_press)
-                        print(f"✅ Hotkey '{self.update_hotkey}' registered for updating files.")
+                    # Code generation hotkeys
+                    keyboard.add_hotkey(self.generation_hotkey, self.on_generate_hotkey_press)
+                    print(f"✅ Hotkey '{self.generation_hotkey}' registered for new files.")
+                    keyboard.add_hotkey(self.update_hotkey, self.on_update_hotkey_press)
+                    print(f"✅ Hotkey '{self.update_hotkey}' registered for updating files.")
 
-                    # Mode switch hotkey (always available)
-                    keyboard.add_hotkey(self.mode_switch_hotkey, self.toggle_mode)
-                    print(f"✅ Hotkey '{self.mode_switch_hotkey}' registered for mode switching.")
-
-                    # Capture transcript hotkey (always available)
+                    # Capture transcript hotkey
                     keyboard.add_hotkey(self.capture_hotkey, self.capture_transcript_segment)
                     print(f"✅ Hotkey '{self.capture_hotkey}' registered for capturing transcript.\n")
                 except Exception as e:
@@ -1464,17 +1435,12 @@ class VoiceToCodeSystem:
             elif not self.transcript_only:
                  print(f"⚠️  Hotkeys disabled because 'keyboard' library not found.\n")
 
-            # Start listening based on mode
-            if self.transcript_only or self.coach_mode:
-                # Transcript-only and coach mode start listening immediately
-                self.listening_enabled = True
-                self.audio_capture.start_capture(
-                    mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
-                    system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
-                )
-            else:
-                # Code generation mode waits for trigger
-                print("💤 Waiting for first trigger (New button or hotkey) to start listening...\n")
+            # Start listening immediately (coach mode always on)
+            self.listening_enabled = True
+            self.audio_capture.start_capture(
+                mic_callback=self.mic_audio_callback if self.audio_source in [AudioSource.MICROPHONE, AudioSource.BOTH] else None,
+                system_callback=self.system_audio_callback if self.audio_source in [AudioSource.SYSTEM, AudioSource.BOTH] else None
+            )
 
             while self.is_running:
                 # Check for remote commands (mode toggle is always available)
@@ -1567,6 +1533,16 @@ def main():
     sys.stdout = Logger(log_filename)
     print(f"📄 Logging to: {log_filename}\n")
 
+    # Keep only the last 5 log files
+    try:
+        log_files = sorted(log_dir.glob("session_*.log"), key=lambda p: p.stat().st_mtime)
+        if len(log_files) > 5:
+            for old_log in log_files[:-5]:
+                old_log.unlink()
+                print(f"🗑️  Deleted old log: {old_log.name}")
+    except Exception as e:
+        print(f"⚠️  Failed to clean up old logs: {e}")
+
     # Start web server (if enabled via env var)
     web_server_process = None
     debug = False  # Initialize debug flag early
@@ -1623,10 +1599,9 @@ def main():
             print("💡 Get a free API key at: https://aistudio.google.com/app/apikey")
             return
 
-    # Check for debug mode, transcript-only mode, and coach mode
+    # Check for debug mode and transcript-only mode
     debug = os.getenv("DEBUG", "false").lower() == "true"  # Read from env
     transcript_only = os.getenv("TRANSCRIPT_ONLY", "false").lower() == "true"
-    coach_mode = os.getenv("COACH_MODE", "false").lower() == "true"
 
     # Get audio source configuration
     audio_source_str = os.getenv("AUDIO_SOURCE", "both").lower()
@@ -1652,10 +1627,9 @@ def main():
     except ValueError:
         vad_aggressiveness = 2
 
-    # Get trigger mode configuration for code generation
+    # Get hotkey configuration
     generation_hotkey = os.getenv("GENERATION_HOTKEY", "ctrl+shift+g")
     update_hotkey = os.getenv("UPDATE_HOTKEY", "ctrl+shift+s")
-    mode_switch_hotkey = os.getenv("MODE_SWITCH_HOTKEY", "ctrl+shift+m")
     capture_hotkey = os.getenv("CAPTURE_HOTKEY", "ctrl+shift+c")
     edit_keyword = os.getenv("EDIT_KEYWORD", "edit file")
     close_keyword = os.getenv("CLOSE_KEYWORD", "close file")
@@ -1676,11 +1650,9 @@ def main():
             vad_aggressiveness=vad_aggressiveness,
             generation_hotkey=generation_hotkey,
             update_hotkey=update_hotkey,
-            mode_switch_hotkey=mode_switch_hotkey,
             capture_hotkey=capture_hotkey,
             edit_keyword=edit_keyword,
-            close_keyword=close_keyword,
-            coach_mode=coach_mode
+            close_keyword=close_keyword
         )
         system.start()
     except Exception as e:
