@@ -6,6 +6,29 @@
 // System prompt appended to all prompts
 const MARKDOWN_SYSTEM_PROMPT = 'Your response should be very short and concise and easy to read. **IMPORTANT: Format your entire response using Markdown. Use proper Markdown syntax for headings, bold, italics, lists, and code blocks. All code snippets must be wrapped in triple backticks with the language identifier (e.g., ```python, ```javascript, etc.).**';
 
+// Destination preferences
+let destinations = {
+    gemini: true,
+    claude: true
+};
+
+// Get current destination settings
+function getDestinations() {
+    return {
+        gemini: document.getElementById('destGemini')?.checked ?? true,
+        claude: document.getElementById('destClaude')?.checked ?? true
+    };
+}
+
+// Update destination preferences
+function updateDestination() {
+    destinations = getDestinations();
+    const destLabels = [];
+    if (destinations.gemini) destLabels.push('Gemini');
+    if (destinations.claude) destLabels.push('Claude');
+    console.log(`Destination updated: ${destLabels.join(' + ')}`);
+}
+
 // Default prompts that come pre-loaded
 const DEFAULT_PROMPTS = [
     {
@@ -255,7 +278,9 @@ async function handlePromptClick(id) {
     if (prompt.action === 'capture') {
         // Capture behavior - take screenshot and analyze
         console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
+        destinations = getDestinations();
         window.sessionStorage.setItem('analysisPrompt', fullPrompt);
+        window.sessionStorage.setItem('promptDestinations', JSON.stringify(destinations));
         window.electronAPI.startScreenshot();
     } else if (prompt.action === 'new_code') {
         // Trigger code generation from transcript with selected transcripts
@@ -268,17 +293,19 @@ async function handlePromptClick(id) {
     } else {
         // Send Text behavior for prompts with 'copy' action
         console.log(`Sending text prompt: "${prompt.label}"`);
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            const message = {
-                type: 'analyze_text_prompt',
-                prompt: fullPrompt
-            };
-            ws.send(JSON.stringify(message));
-            showNotification('✓ Prompt sent to Gemini!');
-        } else {
-            console.error('WebSocket not connected. Cannot send prompt.');
-            showNotification('❌ WebSocket not connected.');
-        }
+        destinations = getDestinations();
+
+        // Send to selected destinations
+        window.electronAPI.sendAdhocPrompt(fullPrompt, destinations).then(() => {
+            const destLabels = [];
+            if (destinations.gemini) destLabels.push('Gemini');
+            if (destinations.claude) destLabels.push('Claude');
+            console.log(`Prompt sent to ${destLabels.join(' + ')}`);
+            showNotification(`✓ Prompt sent to ${destLabels.join(' + ')}!`);
+        }).catch((error) => {
+            console.error('Failed to send adhoc prompt:', error);
+            showNotification('❌ Failed to send prompt.');
+        });
     }
 }
 

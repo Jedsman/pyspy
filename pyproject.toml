@@ -26,6 +26,7 @@ dependencies = [
     "mcp[cli]>=1.22.0",
     "websockets>=15.0.1",
     "pillow>=12.0.0",
+    "watchdog>=6.0.0", # File watcher for web server
 ]
 
 [project.optional-dependencies]

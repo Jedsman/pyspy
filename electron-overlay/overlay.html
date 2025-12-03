@@ -1021,9 +1021,23 @@
                         <span id="promptsToggle" style="font-size: 10px; color: rgba(255, 255, 255, 0.4);">▼</span>
                     </div>
                     <div class="prompts-content" id="promptsContent">
+                        <!-- Destination Selector -->
+                        <div class="destination-selector">
+                            <div style="font-size: 10px; color: rgba(255, 255, 255, 0.6); margin-bottom: 8px;">Send prompts to:</div>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255, 255, 255, 0.8); cursor: pointer;">
+                                    <input type="checkbox" id="destGemini" checked onchange="updateDestination()">
+                                    Gemini
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255, 255, 255, 0.8); cursor: pointer;">
+                                    <input type="checkbox" id="destClaude" checked onchange="updateDestination()">
+                                    Claude
+                                </label>
+                            </div>
+                        </div>
                         <div class="prompts-toolbar">
-                            <button class="toolbar-btn add-btn" onclick="showAddPromptModal()">➕ Add Prompt</button>
-                            <button class="toolbar-btn reset-btn" onclick="resetToDefaults()">🔄 Reset to Defaults</button>
+                            <button class="toolbar-btn add-btn" onclick="showAddPromptModal()">+ Add Prompt</button>
+                            <button class="toolbar-btn reset-btn" onclick="resetToDefaults()">Reset</button>
                         </div>
                         <div class="prompts-list" id="promptsList">
                             <!-- Prompts will be rendered here by custom_prompts.js -->
@@ -1936,10 +1950,16 @@
                     console.log('Screenshot captured, but no analysis prompt was set.');
                     return;
                 }
+
+                // Get destinations from sessionStorage (defaults to both if not set)
+                const destStr = window.sessionStorage.getItem('promptDestinations');
+                const destinations = destStr ? JSON.parse(destStr) : { gemini: true, claude: true };
+
                 window.sessionStorage.removeItem('analysisPrompt'); // Clear the prompt
+                window.sessionStorage.removeItem('promptDestinations'); // Clear the destinations
 
                 console.log('Screenshot captured, saving to file...');
-                const saveResult = await window.electronAPI.saveScreenshotData(dataUrl);
+                const saveResult = await window.electronAPI.saveScreenshotData(dataUrl, analysisPrompt, destinations);
 
                 if (saveResult.success) {
                     console.log(`File saved at: ${saveResult.path}`);
