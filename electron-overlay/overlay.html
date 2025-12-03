@@ -1926,14 +1926,13 @@
                 cancelScreenshotSelection();
             });
 
-            // ESC to cancel screenshot selection
+            // ESC to cancel screenshot selection (but not close the app)
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     if (overlay.classList.contains('active')) {
                         cancelScreenshotSelection();
-                    } else {
-                        window.close();
                     }
+                    // Don't close the window - ESC is now disabled to prevent accidental closure
                 }
             });
         });
