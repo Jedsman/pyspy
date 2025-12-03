@@ -393,11 +393,12 @@ class SpeechTranscriber:
 from typing import List
 from pydantic import BaseModel, Field
 from config import GENERATED_CODE_DIR
+from llm_router import get_router, LLMRouter
 
 class CodeGenerator:
     """Generates code using LLM based on a running conversation context."""
 
-    def __init__(self, output_dir=GENERATED_CODE_DIR, llm_method=LLMMethod.GEMINI):
+    def __init__(self, output_dir=GENERATED_CODE_DIR, llm_method=LLMMethod.GEMINI, llm_router: LLMRouter = None):
         self.llm_method = llm_method
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -415,25 +416,35 @@ class CodeGenerator:
             """A tool to generate one or more files, or to update an existing file."""
             files: List[FileInfo] = Field(..., description="A list of files to be generated or updated.")
 
+        self.GenerateFiles = GenerateFiles
+        self.FileInfo = FileInfo
+
         # Load system prompt from file
         self.system_prompt = self.load_system_prompt()
 
-        # Initialize LLM client based on method
-        if llm_method == LLMMethod.CLAUDE:
-            # Claude implementation would need similar architectural changes
-            raise NotImplementedError("Context-aware architecture not implemented for Claude yet.")
+        if not self.system_prompt:
+            raise ValueError(
+                "System prompt could not be loaded. "
+                "Please ensure 'prompts/gemini_code_gen.md' exists."
+            )
 
-        elif llm_method == LLMMethod.GEMINI:
-            if not self.system_prompt:
-                raise ValueError(
-                    "Gemini system prompt could not be loaded. "
-                    "Please ensure 'prompts/gemini_code_gen.md' exists."
-                )
+        # Initialize LLM router (dependency injection or factory)
+        if llm_router:
+            self.llm_router = llm_router
+        else:
+            # Create router based on llm_method
+            self.llm_router = get_router(
+                llm_method=llm_method.value if hasattr(llm_method, 'value') else str(llm_method),
+                system_prompt=self.system_prompt
+            )
+
+        # Initialize Gemini model for function calling (still needed for now)
+        if llm_method == LLMMethod.GEMINI:
             api_key = os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not found in .env")
             genai.configure(api_key=api_key)
-            model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+            model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
             self.gemini_model = genai.GenerativeModel(
                 model_name=model_name,
@@ -441,6 +452,11 @@ class CodeGenerator:
                 tools=[GenerateFiles]
             )
             print(f"🔧 Using {model_name} with Function Calling for code generation (FREE)")
+            print(f"📡 LLM Router: {self.llm_router.get_name()}")
+
+        elif llm_method == LLMMethod.CLAUDE:
+            print(f"🔧 Claude implementation ready (awaiting full integration)")
+            print(f"📡 LLM Router: {self.llm_router.get_name()}")
 
     def load_system_prompt(self, prompt_filename="prompts/gemini_code_gen.md"):
         """Loads the system prompt from a file."""

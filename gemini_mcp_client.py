@@ -1,3 +1,14 @@
+"""
+DEPRECATED: This module is no longer used in the current architecture.
+Kept for historical reference and potential future use.
+
+The LLM router (llm_router.py) now handles all LLM interactions including Gemini.
+MCP server functionality is in mcp_server.py.
+
+If you need to resurrect this functionality, reference commit history or
+contact the development team.
+"""
+
 import asyncio
 import base64
 import subprocess
