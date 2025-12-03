@@ -303,14 +303,18 @@ async function handlePromptClick(id) {
         console.log(`[TEXT] Sending text prompt: "${prompt.label}" -> ${destLabels.join(' + ')}`);
         console.log(`[TEXT] Destinations: ${JSON.stringify(destinations)}`);
 
-        // Send to selected destinations
-        window.electronAPI.sendAdhocPrompt(fullPrompt, destinations).then(() => {
-            console.log(`[TEXT] Prompt sent to ${destLabels.join(' + ')}`);
-            showNotification(`✓ Prompt sent to ${destLabels.join(' + ')}!`);
-        }).catch((error) => {
-            console.error('[TEXT] Failed to send adhoc prompt:', error);
-            showNotification('❌ Failed to send prompt.');
-        });
+        // Send to selected destinations via IPC
+        console.log('[TEXT] Calling sendAdhocPrompt IPC handler...');
+        window.electronAPI.sendAdhocPrompt(fullPrompt, destinations)
+            .then((result) => {
+                console.log(`[TEXT] IPC handler returned: ${JSON.stringify(result)}`);
+                console.log(`[TEXT] Prompt sent to ${destLabels.join(' + ')}`);
+                showNotification(`✓ Prompt sent to ${destLabels.join(' + ')}!`);
+            })
+            .catch((error) => {
+                console.error('[TEXT] IPC handler error:', error);
+                showNotification('❌ Failed to send prompt.');
+            });
     }
 }
 
@@ -337,24 +341,38 @@ async function triggerCodeGenerationWithTranscripts(action, promptText) {
         return;
     }
 
-    // Send code generation request via WebSocket
-    // Backend will prepend gemini_code_gen.md system prompt
+    // Send code generation request via WebSocket to Gemini
+    const transcriptText = selectedTranscripts.join('\n\n');
     if (ws && ws.readyState === WebSocket.OPEN) {
         const message = {
             type: 'code_generation_request',
             action: action,
             prompt: promptText,
-            transcripts: selectedTranscripts.join('\n\n')
+            transcripts: transcriptText
         };
         ws.send(JSON.stringify(message));
+        console.log(`[CODE-GEN] Sent to Gemini: ${action}`);
         showNotification(`✓ ${action === 'new_code' ? 'Generating new code' : 'Updating code'}...`);
-
-        // Uncheck all checkboxes
-        checkboxes.forEach(cb => cb.checked = false);
     } else {
         console.error('WebSocket not connected. Cannot send code generation request.');
         showNotification('❌ WebSocket not connected.');
     }
+
+    // Also send to Claude via IPC
+    const destinations = getDestinations();
+    if (destinations.claude) {
+        console.log(`[CODE-GEN] Sending to Claude: ${action}`);
+        window.electronAPI.sendCodeGenerationRequest(action, promptText, transcriptText, destinations)
+            .then((result) => {
+                console.log(`[CODE-GEN] Claude IPC returned: ${JSON.stringify(result)}`);
+            })
+            .catch((error) => {
+                console.error('[CODE-GEN] Claude IPC error:', error);
+            });
+    }
+
+    // Uncheck all checkboxes
+    checkboxes.forEach(cb => cb.checked = false);
 }
 
 function showAddPromptModal() {

@@ -364,3 +364,40 @@ ipcMain.handle('send-adhoc-prompt', async (event, promptText, destinations) => {
         return { success: false, error: error.message };
     }
 });
+
+// Handle code generation requests (for 'new_code' and 'update_code' actions)
+ipcMain.handle('send-code-generation-request', async (event, action, promptText, transcripts, destinations) => {
+    try {
+        let dests = { gemini: true, claude: true };
+        if (destinations && typeof destinations === 'object') {
+            dests = destinations;
+        }
+        console.log(`[CODE-GEN] Destinations received: ${JSON.stringify(dests)}`);
+
+        const sharedDrivePath = process.env.SHARED_DRIVE_PATH || path.join(__dirname, '..', 'generated_code');
+
+        // Always write to code generation queue for Claude Desktop
+        const codeGenQueuePath = path.join(sharedDrivePath, '.code_generation_queue.json');
+        let queue = [];
+        if (fs.existsSync(codeGenQueuePath)) {
+            const queueData = fs.readFileSync(codeGenQueuePath, 'utf-8');
+            queue = JSON.parse(queueData);
+        }
+
+        queue.push({
+            action: action,
+            prompt: promptText,
+            transcripts: transcripts,
+            timestamp: new Date().toISOString(),
+            type: 'code_generation'
+        });
+
+        fs.writeFileSync(codeGenQueuePath, JSON.stringify(queue, null, 2), 'utf-8');
+        console.log(`[CODE-GEN] Added to .code_generation_queue.json on shared drive: ${codeGenQueuePath}`);
+
+        return { success: true };
+    } catch (error) {
+        console.error('[CODE-GEN] Failed to queue code generation request:', error);
+        return { success: false, error: error.message };
+    }
+});

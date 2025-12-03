@@ -42,6 +42,7 @@ server = Server("voice-to-code")
 LIVE_TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".live_transcript"
 TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
 PROMPT_QUEUE_FILE = GENERATED_CODE_DIR / ".prompt_queue.json"
+CODE_GENERATION_QUEUE_FILE = GENERATED_CODE_DIR / ".code_generation_queue.json"
 COMMAND_FILE = GENERATED_CODE_DIR / ".command"
 
 
@@ -209,6 +210,15 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="check_prompt_queue",
             description="Check for pending screenshot analysis requests. Returns any queued prompts with their associated screenshots. Call this periodically or when notified of new captures.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="check_code_generation_queue",
+            description="Check for pending code generation requests (new_code or update_code). Returns the prompt, transcripts, and action type. Call this to get code generation tasks from the overlay.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -438,6 +448,84 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 TextContent(
                     type="text",
                     text=f"Error reading prompt queue: {str(e)}",
+                )
+            ]
+
+    elif name == "check_code_generation_queue":
+        # Check for queued code generation requests
+        logger.info(f"check_code_generation_queue called - queue file path: {CODE_GENERATION_QUEUE_FILE}")
+
+        if not CODE_GENERATION_QUEUE_FILE.exists():
+            logger.info("Code generation queue file does not exist - no pending requests")
+            return [
+                TextContent(
+                    type="text",
+                    text="No pending code generation requests.",
+                )
+            ]
+
+        logger.info(f"Code generation queue file exists, reading from {CODE_GENERATION_QUEUE_FILE}")
+
+        try:
+            with open(CODE_GENERATION_QUEUE_FILE, 'r', encoding='utf-8') as f:
+                queue_content = f.read()
+                logger.debug(f"Raw code generation queue content: {queue_content}")
+                queue = json.loads(queue_content)
+
+            logger.info(f"Code generation queue loaded successfully - {len(queue)} item(s) in queue")
+
+            if not queue or len(queue) == 0:
+                logger.info("Code generation queue is empty, deleting queue file")
+                CODE_GENERATION_QUEUE_FILE.unlink()
+                return [
+                    TextContent(
+                        type="text",
+                        text="No pending code generation requests.",
+                    )
+                ]
+
+            # Get the first item from queue
+            item = queue.pop(0)
+            action = item.get('action', 'new_code')
+            prompt_text = item.get('prompt', '')
+            transcripts = item.get('transcripts', '')
+            timestamp = item.get('timestamp', '')
+
+            logger.info(f"Processing code generation request: action={action}, timestamp={timestamp}")
+            logger.debug(f"Prompt: {prompt_text[:100]}...")
+            logger.debug(f"Transcripts: {transcripts[:200]}...")
+
+            # Update queue file (remove processed item)
+            if len(queue) == 0:
+                logger.info("Code generation queue is now empty after processing, deleting queue file")
+                CODE_GENERATION_QUEUE_FILE.unlink()
+            else:
+                logger.info(f"Code generation queue now has {len(queue)} remaining item(s), updating queue file")
+                with open(CODE_GENERATION_QUEUE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(queue, f, indent=2)
+
+            # Return the code generation request details
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Code Generation Request ({action}):\n\nPrompt:\n{prompt_text}\n\nSelected Transcripts:\n{transcripts}\n\nRequested at: {timestamp}",
+                )
+            ]
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse code generation queue file as JSON: {str(e)}")
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error: Invalid code generation queue file format (JSON parse error): {str(e)}",
+                )
+            ]
+        except Exception as e:
+            logger.error(f"Error reading code generation queue: {str(e)}", exc_info=True)
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error reading code generation queue: {str(e)}",
                 )
             ]
 

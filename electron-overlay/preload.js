@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Expose the new save function
   saveScreenshotData: (dataUrl, promptText, destinations) => ipcRenderer.invoke('save-screenshot-data', dataUrl, promptText, destinations),
   sendAdhocPrompt: (promptText, destinations) => ipcRenderer.invoke('send-adhoc-prompt', promptText, destinations),
+  sendCodeGenerationRequest: (action, promptText, transcripts, destinations) => ipcRenderer.invoke('send-code-generation-request', action, promptText, transcripts, destinations),
   openTranscriptWindow: () => ipcRenderer.send('open-transcript-window'),
   getDefaultServerIp: () => ipcRenderer.invoke('get-default-server-ip')
 });
