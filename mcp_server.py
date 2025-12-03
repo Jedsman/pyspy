@@ -373,66 +373,65 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     )
                 ]
 
-            # Get the first item from queue
-            item = queue.pop(0)
-            prompt_text = item.get('prompt', '')
-            timestamp = item.get('timestamp', '')
-            item_type = item.get('type', 'screenshot')  # 'adhoc' or 'screenshot'
-            filename = item.get('filename', '')
+            # Return ALL items in queue, then delete the queue file
+            logger.info(f"Returning all {len(queue)} pending requests to Claude Desktop")
 
-            logger.info(f"Processing queue item: type={item_type}, filename={filename}, timestamp={timestamp}")
-            logger.debug(f"Prompt text: {prompt_text[:100]}..." if len(prompt_text) > 100 else f"Prompt text: {prompt_text}")
+            contents = []
 
-            # Update queue file (remove processed item)
-            if len(queue) == 0:
-                logger.info("Queue is now empty after processing, deleting queue file")
-                PROMPT_QUEUE_FILE.unlink()
-            else:
-                logger.info(f"Queue now has {len(queue)} remaining item(s), updating queue file")
-                with open(PROMPT_QUEUE_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(queue, f, indent=2)
-
-            # Handle adhoc prompts (no screenshot)
-            if item_type == 'adhoc':
-                logger.info("Returning adhoc text prompt to Claude Desktop")
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Prompt from overlay:\n\n{prompt_text}",
-                    )
-                ]
-
-            # Handle screenshot analysis requests (with screenshot)
-            logger.info(f"Looking for screenshot file: {filename}")
-            screenshot_path = SCREENSHOTS_DIR / filename
-
-            if not screenshot_path.exists():
-                logger.error(f"Screenshot file not found: {screenshot_path}")
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Screenshot file not found: {filename}",
-                    )
-                ]
-
-            logger.info(f"Screenshot file found, reading: {screenshot_path}")
-            with open(screenshot_path, 'rb') as f:
-                image_data = base64.b64encode(f.read()).decode('utf-8')
-
-            logger.info(f"Screenshot encoded successfully ({len(image_data)} bytes), returning to Claude Desktop")
-
-            # Return the prompt text and the screenshot
-            return [
+            # Add header
+            contents.append(
                 TextContent(
                     type="text",
-                    text=f"Screenshot analysis request:\n\n{prompt_text}\n\nScreenshot: {filename}\nCaptured at: {timestamp}",
-                ),
-                ImageContent(
-                    type="image",
-                    data=image_data,
-                    mimeType="image/png"
+                    text=f"Pending analysis requests ({len(queue)} items):\n",
                 )
-            ]
+            )
+
+            # Process each item
+            for idx, item in enumerate(queue, 1):
+                prompt_text = item.get('prompt', '')
+                timestamp = item.get('timestamp', '')
+                item_type = item.get('type', 'screenshot')
+                filename = item.get('filename', '')
+
+                logger.debug(f"Item {idx}/{len(queue)}: type={item_type}, timestamp={timestamp}")
+
+                # Add text summary for this item
+                contents.append(
+                    TextContent(
+                        type="text",
+                        text=f"\n[REQUEST #{idx}] {item_type.upper()}\nPrompt: {prompt_text}\nTime: {timestamp}\n",
+                    )
+                )
+
+                # Add screenshot image if available
+                if item_type == 'screenshot' and filename:
+                    screenshot_path = SCREENSHOTS_DIR / filename
+                    if screenshot_path.exists():
+                        logger.info(f"Adding screenshot {idx}: {filename}")
+                        with open(screenshot_path, 'rb') as f:
+                            image_data = base64.b64encode(f.read()).decode('utf-8')
+                        contents.append(
+                            ImageContent(
+                                type="image",
+                                data=image_data,
+                                mimeType="image/png"
+                            )
+                        )
+                    else:
+                        logger.warning(f"Screenshot file not found: {screenshot_path}")
+                        contents.append(
+                            TextContent(
+                                type="text",
+                                text=f"[Screenshot file not found: {filename}]"
+                            )
+                        )
+
+            # Delete queue file after returning all items
+            logger.info("Deleting prompt queue file after returning all items")
+            PROMPT_QUEUE_FILE.unlink()
+
+            logger.info("All pending requests returned to Claude Desktop")
+            return contents
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse queue file as JSON: {str(e)}")
@@ -484,33 +483,42 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     )
                 ]
 
-            # Get the first item from queue
-            item = queue.pop(0)
-            action = item.get('action', 'new_code')
-            prompt_text = item.get('prompt', '')
-            transcripts = item.get('transcripts', '')
-            timestamp = item.get('timestamp', '')
+            # Return ALL items in queue, then delete the queue file
+            logger.info(f"Returning all {len(queue)} pending code generation requests to Claude Desktop")
 
-            logger.info(f"Processing code generation request: action={action}, timestamp={timestamp}")
-            logger.debug(f"Prompt: {prompt_text[:100]}...")
-            logger.debug(f"Transcripts: {transcripts[:200]}...")
+            contents = []
 
-            # Update queue file (remove processed item)
-            if len(queue) == 0:
-                logger.info("Code generation queue is now empty after processing, deleting queue file")
-                CODE_GENERATION_QUEUE_FILE.unlink()
-            else:
-                logger.info(f"Code generation queue now has {len(queue)} remaining item(s), updating queue file")
-                with open(CODE_GENERATION_QUEUE_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(queue, f, indent=2)
-
-            # Return the code generation request details
-            return [
+            # Add header
+            contents.append(
                 TextContent(
                     type="text",
-                    text=f"Code Generation Request ({action}):\n\nPrompt:\n{prompt_text}\n\nSelected Transcripts:\n{transcripts}\n\nRequested at: {timestamp}",
+                    text=f"Pending code generation requests ({len(queue)} items):\n",
                 )
-            ]
+            )
+
+            # Process each item
+            for idx, item in enumerate(queue, 1):
+                action = item.get('action', 'new_code')
+                prompt_text = item.get('prompt', '')
+                transcripts = item.get('transcripts', '')
+                timestamp = item.get('timestamp', '')
+
+                logger.debug(f"Item {idx}/{len(queue)}: action={action}, timestamp={timestamp}")
+
+                # Add text summary for this item
+                contents.append(
+                    TextContent(
+                        type="text",
+                        text=f"\n[REQUEST #{idx}] {action.upper()}\nPrompt:\n{prompt_text}\n\nTranscripts:\n{transcripts}\n\nRequested at: {timestamp}\n",
+                    )
+                )
+
+            # Delete queue file after returning all items
+            logger.info("Deleting code generation queue file after returning all items")
+            CODE_GENERATION_QUEUE_FILE.unlink()
+
+            logger.info("All pending code generation requests returned to Claude Desktop")
+            return contents
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse code generation queue file as JSON: {str(e)}")
