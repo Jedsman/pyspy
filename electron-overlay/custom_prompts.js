@@ -281,13 +281,19 @@ function togglePrompts() {
     }
 }
 
-// Copy Claude tool name to clipboard
+// Copy Claude tool name to clipboard via Electron API
 function copyClaudeToolToClipboard(toolName) {
-    navigator.clipboard.writeText(toolName).then(() => {
-        console.log(`[CLAUDE-TOOL] Copied "${toolName}" to clipboard`);
-    }).catch((error) => {
-        console.error('[CLAUDE-TOOL] Failed to copy to clipboard:', error);
-    });
+    window.electronAPI.copyToClipboard(toolName)
+        .then((result) => {
+            if (result.success) {
+                console.log(`[CLAUDE-TOOL] Copied "${toolName}" to clipboard`);
+            } else {
+                console.error(`[CLAUDE-TOOL] Failed to copy to clipboard: ${result.error}`);
+            }
+        })
+        .catch((error) => {
+            console.error('[CLAUDE-TOOL] Clipboard copy error:', error);
+        });
 }
 
 async function handlePromptClick(id) {

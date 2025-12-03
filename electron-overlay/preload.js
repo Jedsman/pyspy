@@ -23,5 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendAdhocPrompt: (promptText, destinations) => ipcRenderer.invoke('send-adhoc-prompt', promptText, destinations),
   sendCodeGenerationRequest: (action, promptText, transcripts, destinations) => ipcRenderer.invoke('send-code-generation-request', action, promptText, transcripts, destinations),
   openTranscriptWindow: () => ipcRenderer.send('open-transcript-window'),
-  getDefaultServerIp: () => ipcRenderer.invoke('get-default-server-ip')
+  getDefaultServerIp: () => ipcRenderer.invoke('get-default-server-ip'),
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text)
 });

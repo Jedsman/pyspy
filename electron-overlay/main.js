@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -398,6 +398,18 @@ ipcMain.handle('send-code-generation-request', async (event, action, promptText,
         return { success: true };
     } catch (error) {
         console.error('[CODE-GEN] Failed to queue code generation request:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Handle clipboard copy for Claude tool names
+ipcMain.handle('copy-to-clipboard', async (event, text) => {
+    try {
+        clipboard.writeText(text);
+        console.log(`[CLIPBOARD] Copied to clipboard: ${text}`);
+        return { success: true };
+    } catch (error) {
+        console.error('[CLIPBOARD] Failed to copy to clipboard:', error);
         return { success: false, error: error.message };
     }
 });
