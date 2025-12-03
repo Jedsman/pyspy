@@ -5,6 +5,7 @@ Exposes transcripts and screenshots as resources to Claude Desktop
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 from typing import Any
 import base64
@@ -22,6 +23,17 @@ from mcp.types import (
 
 # Import centralized config
 from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR
+
+# Set up logging for MCP server debugging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[MCP] %(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(GENERATED_CODE_DIR / 'mcp_server.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Initialize MCP server
 server = Server("voice-to-code")
@@ -209,10 +221,13 @@ async def handle_list_tools() -> list[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Handle tool execution requests"""
+    logger.info(f"Tool called: {name}")
 
     if name == "capture_transcript":
         # Trigger transcript capture via command file
+        logger.info("Writing capture_transcript to command file")
         COMMAND_FILE.write_text("capture_transcript")
+        logger.info("Transcript capture triggered")
 
         return [
             TextContent(
@@ -223,7 +238,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
     elif name == "capture_screenshot":
         # Trigger screenshot capture via command file
+        logger.info("Writing capture_screenshot to command file")
         COMMAND_FILE.write_text("capture_screenshot")
+        logger.info("Screenshot capture triggered")
 
         return [
             TextContent(
@@ -314,7 +331,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
     elif name == "check_prompt_queue":
         # Check for queued screenshot analysis requests and adhoc prompts
+        logger.info(f"check_prompt_queue called - queue file path: {PROMPT_QUEUE_FILE}")
+
         if not PROMPT_QUEUE_FILE.exists():
+            logger.info("Queue file does not exist - no pending requests")
             return [
                 TextContent(
                     type="text",
@@ -322,12 +342,19 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 )
             ]
 
+        logger.info(f"Queue file exists, reading from {PROMPT_QUEUE_FILE}")
+
         try:
             with open(PROMPT_QUEUE_FILE, 'r', encoding='utf-8') as f:
-                queue = json.load(f)
+                queue_content = f.read()
+                logger.debug(f"Raw queue file content: {queue_content}")
+                queue = json.loads(queue_content)
+
+            logger.info(f"Queue loaded successfully - {len(queue)} item(s) in queue")
 
             if not queue or len(queue) == 0:
                 # Empty queue, delete file
+                logger.info("Queue is empty, deleting queue file")
                 PROMPT_QUEUE_FILE.unlink()
                 return [
                     TextContent(
@@ -343,25 +370,34 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             item_type = item.get('type', 'screenshot')  # 'adhoc' or 'screenshot'
             filename = item.get('filename', '')
 
+            logger.info(f"Processing queue item: type={item_type}, filename={filename}, timestamp={timestamp}")
+            logger.debug(f"Prompt text: {prompt_text[:100]}..." if len(prompt_text) > 100 else f"Prompt text: {prompt_text}")
+
             # Update queue file (remove processed item)
             if len(queue) == 0:
+                logger.info("Queue is now empty after processing, deleting queue file")
                 PROMPT_QUEUE_FILE.unlink()
             else:
+                logger.info(f"Queue now has {len(queue)} remaining item(s), updating queue file")
                 with open(PROMPT_QUEUE_FILE, 'w', encoding='utf-8') as f:
                     json.dump(queue, f, indent=2)
 
             # Handle adhoc prompts (no screenshot)
             if item_type == 'adhoc':
+                logger.info("Returning adhoc text prompt to Claude Desktop")
                 return [
                     TextContent(
                         type="text",
-                        text=f"💬 New prompt from overlay:\n\n{prompt_text}",
+                        text=f"Prompt from overlay:\n\n{prompt_text}",
                     )
                 ]
 
             # Handle screenshot analysis requests (with screenshot)
+            logger.info(f"Looking for screenshot file: {filename}")
             screenshot_path = SCREENSHOTS_DIR / filename
+
             if not screenshot_path.exists():
+                logger.error(f"Screenshot file not found: {screenshot_path}")
                 return [
                     TextContent(
                         type="text",
@@ -369,14 +405,17 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     )
                 ]
 
+            logger.info(f"Screenshot file found, reading: {screenshot_path}")
             with open(screenshot_path, 'rb') as f:
                 image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            logger.info(f"Screenshot encoded successfully ({len(image_data)} bytes), returning to Claude Desktop")
 
             # Return the prompt text and the screenshot
             return [
                 TextContent(
                     type="text",
-                    text=f"📸 New screenshot analysis request:\n\n{prompt_text}\n\nScreenshot: {filename}\nCaptured at: {timestamp}",
+                    text=f"Screenshot analysis request:\n\n{prompt_text}\n\nScreenshot: {filename}\nCaptured at: {timestamp}",
                 ),
                 ImageContent(
                     type="image",
@@ -385,7 +424,16 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 )
             ]
 
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse queue file as JSON: {str(e)}")
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error: Invalid queue file format (JSON parse error): {str(e)}",
+                )
+            ]
         except Exception as e:
+            logger.error(f"Error reading prompt queue: {str(e)}", exc_info=True)
             return [
                 TextContent(
                     type="text",

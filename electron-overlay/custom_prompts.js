@@ -277,8 +277,12 @@ async function handlePromptClick(id) {
 
     if (prompt.action === 'capture') {
         // Capture behavior - take screenshot and analyze
-        console.log(`Triggering screenshot for prompt: "${prompt.label}"`);
         destinations = getDestinations();
+        const destLabels = [];
+        if (destinations.gemini) destLabels.push('Gemini');
+        if (destinations.claude) destLabels.push('Claude');
+        console.log(`[SCREENSHOT] Triggering screenshot for "${prompt.label}" -> ${destLabels.join(' + ')}`);
+        console.log(`[SCREENSHOT] Destinations: ${JSON.stringify(destinations)}`);
         window.sessionStorage.setItem('analysisPrompt', fullPrompt);
         window.sessionStorage.setItem('promptDestinations', JSON.stringify(destinations));
         window.electronAPI.startScreenshot();
@@ -292,18 +296,19 @@ async function handlePromptClick(id) {
         triggerCodeGenerationWithTranscripts('update_code', prompt.prompt);
     } else {
         // Send Text behavior for prompts with 'copy' action
-        console.log(`Sending text prompt: "${prompt.label}"`);
         destinations = getDestinations();
+        const destLabels = [];
+        if (destinations.gemini) destLabels.push('Gemini');
+        if (destinations.claude) destLabels.push('Claude');
+        console.log(`[TEXT] Sending text prompt: "${prompt.label}" -> ${destLabels.join(' + ')}`);
+        console.log(`[TEXT] Destinations: ${JSON.stringify(destinations)}`);
 
         // Send to selected destinations
         window.electronAPI.sendAdhocPrompt(fullPrompt, destinations).then(() => {
-            const destLabels = [];
-            if (destinations.gemini) destLabels.push('Gemini');
-            if (destinations.claude) destLabels.push('Claude');
-            console.log(`Prompt sent to ${destLabels.join(' + ')}`);
+            console.log(`[TEXT] Prompt sent to ${destLabels.join(' + ')}`);
             showNotification(`✓ Prompt sent to ${destLabels.join(' + ')}!`);
         }).catch((error) => {
-            console.error('Failed to send adhoc prompt:', error);
+            console.error('[TEXT] Failed to send adhoc prompt:', error);
             showNotification('❌ Failed to send prompt.');
         });
     }
