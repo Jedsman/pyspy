@@ -1,0 +1,11 @@
+{
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "name": "Default Interview Prep",
+      "documents_path": "/path/to/documents",
+      "career_history_file": "/path/to/career_history.json",
+      "domain_context_file": "/path/to/domain_context.txt"
+    }
+  }
+}

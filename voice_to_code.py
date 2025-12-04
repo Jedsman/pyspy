@@ -877,6 +877,10 @@ class VoiceToCodeSystem:
                 print(f"\n📄 Transcript window closed - switching to auto mode")
                 self.transcript_window_open = False
 
+            elif command == "interview_coach_query":
+                print(f"\n🎯 Interview Coach Query received!")
+                self.handle_interview_coach_query(command_data)
+
         except Exception as e:
             # Silently ignore errors (file might be deleted by another process)
             pass
@@ -1294,6 +1298,76 @@ class VoiceToCodeSystem:
             import traceback
             traceback.print_exc()
             self.send_coach_suggestions(text, [error_message])
+
+    def handle_interview_coach_query(self, command_data: dict):
+        """
+        Handle Interview Coach query from web overlay.
+        Receives selected segments and signals MCP to retrieve context.
+        """
+        try:
+            combined_text = command_data.get("combined_text", "")
+            if not combined_text:
+                print("❌ No question text provided")
+                return
+
+            print(f"📚 Interview Coach Query: {combined_text[:100]}...")
+
+            # Create query file for MCP server to read
+            query_file = Path("generated_code") / ".interview_coach_query"
+            query_data = {
+                "question": combined_text,
+                "segments": command_data.get("segments", []),
+                "timestamp": command_data.get("timestamp", datetime.now().isoformat())
+            }
+            query_file.write_text(json.dumps(query_data, indent=2))
+            print(f"✅ Interview Coach query written to {query_file}")
+
+            # Start polling for response in a thread
+            response_thread = threading.Thread(target=self._poll_interview_coach_response)
+            response_thread.daemon = True
+            response_thread.start()
+
+        except Exception as e:
+            print(f"❌ Error handling interview coach query: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _poll_interview_coach_response(self, timeout_seconds=30):
+        """
+        Poll for Interview Coach response file from MCP server.
+        Displays response in web overlay when available.
+        """
+        response_file = Path("generated_code") / ".interview_coach_response"
+        start_time = time.time()
+
+        while time.time() - start_time < timeout_seconds:
+            if response_file.exists():
+                try:
+                    response_data = json.loads(response_file.read_text())
+                    answer = response_data.get("answer", "No answer received")
+
+                    # Send to web overlay via WebSocket
+                    if self.ws_server:
+                        self.ws_server.broadcast(json.dumps({
+                            "type": "interview_coach_response",
+                            "answer": answer,
+                            "question": response_data.get("question", ""),
+                            "sources": response_data.get("sources", [])
+                        }))
+
+                    print(f"✅ Interview Coach response received and displayed")
+
+                    # Clean up response file
+                    response_file.unlink()
+                    return
+
+                except Exception as e:
+                    print(f"❌ Error reading interview coach response: {e}")
+                    return
+
+            time.sleep(0.5)  # Poll every 500ms
+
+        print(f"⏱️  Interview Coach response timeout after {timeout_seconds}s")
 
     def process_transcript_for_commands(self, transcript_text: str):
         """Check transcript for keywords to edit or close a file."""

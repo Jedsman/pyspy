@@ -1,0 +1,306 @@
+================================================================================
+INTERVIEW COACH - TECHNICAL KB STRATEGY SUMMARY
+================================================================================
+
+YOUR QUESTION:
+"Can technical questions (software, DevOps, architecture, best practices) be
+handled just by system prompt or by using prompt injection?"
+
+ANSWER: Use KB Injection (recommended)
+
+================================================================================
+3 APPROACHES COMPARED
+================================================================================
+
+1. SYSTEM PROMPT ONLY
+   ✗ Generic answers (from tutorials)
+   ✗ Not grounded in your experience
+   ✗ Inconsistent across sessions
+   ✗ No control over sources
+   → AVOID
+
+2. CUSTOM PROMPT INJECTION
+   ✗ High overhead per question
+   ✗ Not archived with sessions
+   ✗ Defeats purpose of interview coach
+   ✗ User must write prompts
+   → NOT RECOMMENDED
+
+3. KB INJECTION (RECOMMENDED)
+   ✓ Personal answers (your experience)
+   ✓ Technical grounding (best practices)
+   ✓ Consistent across sessions
+   ✓ Sources archived
+   ✓ Easy to update
+   → USE THIS
+
+================================================================================
+HOW KB INJECTION WORKS
+================================================================================
+
+Question: "How do you design a system for 10M users?"
+
+Process:
+  1. Claude calls retrieve_answer(question)
+  2. KB searches (BM25 + embeddings, ~10ms):
+     - system_design_principles.txt (score: 0.95)
+     - kubernetes_guide.txt (score: 0.92)
+     - career_history.json (score: 0.90)
+  3. Claude reads KB documents
+  4. Claude synthesizes answer:
+     "At GSK, I handled 1M requests/day using [approach].
+      For 10M, I'd scale by [best practice pattern]..."
+  5. Answer blends: Your experience + Best practices + Technical depth
+
+Result: Personal + Technical + Grounded ✅
+
+================================================================================
+WHAT YOU NEED TO DO (30 MINUTES)
+================================================================================
+
+1. Create KB structure
+   mkdir -p ~/.interview_coach/profiles/default/documents/technical_reference
+
+2. Add 4 technical documents (copy from INTERVIEW_COACH_BUILD_KB.md)
+   - 01_system_design_principles.txt
+   - 02_kubernetes_guide.txt
+   - 03_devops_best_practices.txt
+   - 04_microservices_patterns.txt
+
+3. Update career history
+   ~/.interview_coach/profiles/default/career_history.json
+
+4. No changes to system prompt needed
+   Already configured to use retrieve_answer()
+
+5. Test
+   python test_interview_coach.py
+
+================================================================================
+3 NEW DOCUMENTATION FILES CREATED
+================================================================================
+
+1. INTERVIEW_COACH_TECHNICAL_CONTEXT.md
+   Explains: Why system prompt alone doesn't work
+   Shows: 3 approaches with pros/cons
+   Recommends: Hybrid KB injection approach
+   Length: 400+ lines, comprehensive analysis
+
+2. INTERVIEW_COACH_BUILD_KB.md
+   Explains: How to build technical KB in 30 minutes
+   Includes: 4 complete technical documents (copy-paste ready)
+   Content: 1000+ words per document
+   Shows: Progressive KB building (weeks 1-4)
+   Length: 500+ lines, ready to implement
+
+3. INTERVIEW_COACH_SYSTEM_PROMPT_VS_KB_INJECTION.md
+   Explains: Direct answer to your question
+   Shows: Real examples (generic vs grounded answers)
+   Why not: Custom prompt injection
+   Length: 350+ lines, focused answer
+
+================================================================================
+QUICK COMPARISON TABLE
+================================================================================
+
+                        System Prompt   Custom Prompt   KB Injection
+                        Only            Injection       (Recommended)
+Quality                 Medium          High            Very High ✅
+Grounding               Poor            Good            Excellent ✅
+Consistency             Low             Low             High ✅
+Easy to Update          Hard            Hard            Easy ✅
+Archived with Sessions  No              No              Yes ✅
+User Overhead           None            High            Low ✅
+Interview Results       Mediocre        Good            Excellent ✅
+
+Winner: KB Injection ✅
+
+================================================================================
+EXAMPLE: REAL INTERVIEW FLOW
+================================================================================
+
+Question: "How do you ensure system reliability?"
+
+WITHOUT KB Injection (generic):
+  "I would use monitoring, alerting, and incident response procedures.
+   This helps detect issues quickly and recover faster."
+  Problem: Could be copy-paste from any blog
+
+WITH KB Injection (grounded):
+  "At GSK, we implemented:
+   1. Monitoring: Prometheus for metrics, Datadog for logging
+   2. Alerting: SLO-based alerts (error rate > 0.1%)
+   3. Incident response: On-call rotation, runbooks, post-mortems
+   4. Kubernetes: Liveness/readiness probes with auto-restart
+   5. Deployment: Canary deploys with automatic rollback
+
+   When a service goes down, it's detected within seconds,
+   routed around automatically, and paged to on-call."
+
+   ✅ Personal (your projects)
+   ✅ Technical (from KB docs)
+   ✅ Detailed (grounded in experience)
+
+================================================================================
+WHY KB INJECTION WINS
+================================================================================
+
+1. GROUNDING
+   Answers reference actual documents you control
+   Interviewer sees: "This person has thought about this"
+
+2. CONSISTENCY
+   Same KB docs always produce similar answers
+   Easy to learn what works
+
+3. VERIFIABILITY
+   "This principle is from devops_best_practices.txt"
+   You can cite your own KB
+
+4. MAINTAINABILITY
+   New concept? Just add to KB
+   No need to rewrite system prompt
+
+5. TRACEABILITY
+   Sessions archived with KB sources
+   Learn which topics were asked
+
+================================================================================
+KB STRUCTURE YOU'LL BUILD
+================================================================================
+
+~/.interview_coach/profiles/default/
+├── documents/
+│   ├── career_history.json
+│   │   (Your actual projects, achievements, technologies)
+│   └── technical_reference/
+│       ├── 01_system_design_principles.txt
+│       │   (Scalability, consistency, caching, databases, replication)
+│       ├── 02_kubernetes_guide.txt
+│       │   (Pods, services, deployments, scaling, health checks)
+│       ├── 03_devops_best_practices.txt
+│       │   (CI/CD, IaC, monitoring, deployment strategies)
+│       └── 04_microservices_patterns.txt
+│           (Architecture, communication, circuit breakers, sagas)
+└── archive/
+    └── 2025/12/04/
+        └── session_00_50_57.json (Q&A with sources)
+
+================================================================================
+TECHNICAL INTERVIEW COVERAGE
+================================================================================
+
+After setting up KB, you can answer:
+
+✓ System Design
+  "Design a system for X million users"
+  → Uses: system_design_principles.txt + career_history
+
+✓ DevOps & Infrastructure
+  "How do you deploy safely?"
+  → Uses: devops_best_practices.txt + your Kubernetes experience
+
+✓ Kubernetes & Containers
+  "Explain deployment strategies"
+  → Uses: kubernetes_guide.txt from KB
+
+✓ Microservices Architecture
+  "How do you handle distributed failures?"
+  → Uses: microservices_patterns.txt + your projects
+
+✓ Software Engineering
+  "How do you ensure code quality?"
+  → Uses: All KB docs + your career history
+
+Result: Consistent, grounded, technical answers ✅
+
+================================================================================
+IMPLEMENTATION STATUS
+================================================================================
+
+Already Done (4 implementation steps):
+  ✅ Web overlay "Ask Coach" button
+  ✅ Multi-segment selection
+  ✅ Voice app polling loop
+  ✅ MCP tool for Claude
+  ✅ Auto-archiving with sources
+
+Core System Ready:
+  ✅ retrieve_answer() searches KB (BM25 + embeddings)
+  ✅ System prompt configured to use KB
+  ✅ Claude calls tool automatically
+  ✅ Answers include sources
+
+What You Do:
+  ⏳ Add technical documents to KB (30 minutes)
+  ⏳ Update career history
+  ⏳ Test with questions
+
+Result:
+  ✅ Technical questions answered with KB context
+  ✅ Personal + Best practices + Grounded
+
+================================================================================
+QUICK START (30 MINUTES)
+================================================================================
+
+Step 1: Create folder
+  mkdir -p ~/.interview_coach/profiles/default/documents/technical_reference
+
+Step 2: Copy 4 documents
+  Read: INTERVIEW_COACH_BUILD_KB.md
+  Copy: 4 technical documents to technical_reference/
+
+Step 3: Update career history
+  Edit: ~/.interview_coach/profiles/default/career_history.json
+  Add: Your actual projects and achievements
+
+Step 4: Test
+  python test_interview_coach.py
+  Ask: "How do you design systems?"
+  → Claude uses KB ✅
+
+Done! KB Injection now active.
+
+================================================================================
+RESOURCES
+================================================================================
+
+For understanding the problem:
+  → INTERVIEW_COACH_TECHNICAL_CONTEXT.md
+     Why system prompt alone doesn't work
+
+For the direct answer:
+  → INTERVIEW_COACH_SYSTEM_PROMPT_VS_KB_INJECTION.md
+     Why KB injection wins
+
+For implementation:
+  → INTERVIEW_COACH_BUILD_KB.md
+     Copy-paste ready technical documents
+
+Existing docs:
+  → INTERVIEW_COACH_QUICK_START.md - User setup
+  → INTERVIEW_COACH_SYSTEM_PROMPT.md - Claude's instructions
+  → INTERVIEW_COACH_IMPLEMENTATION_SUMMARY.md - Technical details
+
+================================================================================
+VERDICT
+================================================================================
+
+Question: "System prompt or prompt injection?"
+Answer: Neither. Use KB injection (what we built).
+
+Why:
+  • Grounded in documents you control ✅
+  • Personal experience from career_history.json ✅
+  • Best practices from technical reference docs ✅
+  • Consistent across all sessions ✅
+  • Easy to maintain and update ✅
+  • Already implemented (retrieve_answer works) ✅
+
+Setup: 30 minutes to add technical documents
+Result: Professional grounded interview answers ✅
+
+Next: Read INTERVIEW_COACH_BUILD_KB.md and add your 4 technical documents!
+
+================================================================================

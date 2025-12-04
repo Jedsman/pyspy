@@ -27,9 +27,22 @@ dependencies = [
     "websockets>=15.0.1",
     "pillow>=12.0.0",
     "watchdog>=6.0.0", # File watcher for web server
+    # Interview Coach Dependencies
+    "rank-bm25>=0.2.2", # BM25 search algorithm
 ]
 
 [project.optional-dependencies]
+# Interview Coach - Semantic search with embeddings
+embeddings = [
+    "sentence-transformers>=2.2.0",  # Semantic embeddings for reranking
+]
+
+# Interview Coach - Document format support
+documents = [
+    "pdfplumber>=0.10.0",  # PDF extraction (alternative: PyPDF2)
+    "python-docx>=0.8.11",  # DOCX extraction
+]
+
 # Transcription options - choose one or install all
 local = [
     "openai-whisper",  # FREE - runs locally (slower on CPU)
@@ -52,10 +65,17 @@ gemini-client = [
 ]
 
 # Install all transcription options
-all = [
+all-transcription = [
     "openai-whisper",
     "openai>=1.59.5",
     "google-cloud-speech",
+]
+
+# Full Interview Coach setup
+interview-coach-full = [
+    "sentence-transformers>=2.2.0",
+    "pdfplumber>=0.10.0",
+    "python-docx>=0.8.11",
 ]
 
 # Development dependencies

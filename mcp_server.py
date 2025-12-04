@@ -22,7 +22,20 @@ from mcp.types import (
 )
 
 # Import centralized config
-from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR
+from config import GENERATED_CODE_DIR, SCREENSHOTS_DIR, get_active_kb_profile, validate_profile_paths
+
+# Interview Coach imports
+try:
+    from interview_coach import DocumentLoader, RetrievalEngine
+    from interview_coach.transcript_archiver import TranscriptArchiver
+    INTERVIEW_COACH_AVAILABLE = True
+except ImportError:
+    INTERVIEW_COACH_AVAILABLE = False
+
+# Global interview coach state
+retrieval_engine = None
+current_kb_profile = None
+transcript_archiver = None
 
 # Set up logging for MCP server debugging
 logging.basicConfig(
@@ -44,6 +57,42 @@ TRANSCRIPT_FILE = GENERATED_CODE_DIR / ".transcript"
 PROMPT_QUEUE_FILE = GENERATED_CODE_DIR / ".prompt_queue.json"
 CODE_GENERATION_QUEUE_FILE = GENERATED_CODE_DIR / ".code_generation_queue.json"
 COMMAND_FILE = GENERATED_CODE_DIR / ".command"
+
+
+def _init_interview_coach():
+    """Initialize interview coach at server startup."""
+    global retrieval_engine, current_kb_profile, transcript_archiver
+    from config import INTERVIEW_COACH_BASE_PATH
+    import os
+
+    if not INTERVIEW_COACH_AVAILABLE:
+        logger.info("Interview Coach module not available")
+        return
+
+    profile = get_active_kb_profile()
+    if not profile:
+        logger.info("No knowledge base configuration found")
+        return
+
+    valid, msg = validate_profile_paths(profile)
+    if not valid:
+        logger.warning(f"KB profile validation failed: {msg}")
+        return
+
+    try:
+        loader = DocumentLoader(profile["documents_path"], profile["career_history_file"])
+        docs = loader.load_all()
+
+        # Check if embeddings are enabled (default True)
+        use_embeddings = os.getenv("INTERVIEW_COACH_USE_EMBEDDINGS", "true").lower() != "false"
+
+        retrieval_engine = RetrievalEngine(docs, profile["name"], use_embeddings=use_embeddings)
+        transcript_archiver = TranscriptArchiver(INTERVIEW_COACH_BASE_PATH)
+        current_kb_profile = profile
+        search_method = "hybrid (BM25 + embeddings)" if use_embeddings else "BM25 only"
+        logger.info(f"Interview Coach initialized with profile '{profile['name']}' ({len(docs)} documents, {search_method})")
+    except Exception as e:
+        logger.error(f"Failed to initialize Interview Coach: {e}")
 
 
 @server.list_resources()
@@ -223,6 +272,89 @@ async def handle_list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        ),
+        Tool(
+            name="retrieve_answer",
+            description="Retrieve relevant context for an interview question from domain documents and career history",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The interview question to find context for"
+                    }
+                },
+                "required": ["question"],
+            },
+        ),
+        Tool(
+            name="list_knowledge_bases",
+            description="List available knowledge base profiles and show the currently active one",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="switch_knowledge_base",
+            description="Switch to a different knowledge base profile",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "profile_name": {
+                        "type": "string",
+                        "description": "Name of the profile to switch to"
+                    }
+                },
+                "required": ["profile_name"],
+            },
+        ),
+        Tool(
+            name="answer_interview_question",
+            description="Submit a formatted answer to an interview question from Interview Coach. Automatically archives the Q&A pair.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The original interview question"
+                    },
+                    "answer": {
+                        "type": "string",
+                        "description": "Your formatted answer (conversational, first-person)"
+                    },
+                    "sources": {
+                        "type": "array",
+                        "description": "List of KB document sources used",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["question", "answer"],
+            },
+        ),
+        Tool(
+            name="archive_interview_session",
+            description="Archive an interview practice session with the question, answer, and sources used",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The interview question asked"
+                    },
+                    "answer": {
+                        "type": "string",
+                        "description": "The answer provided"
+                    },
+                    "sources": {
+                        "type": "array",
+                        "description": "List of source documents used",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["question", "answer"],
             },
         ),
     ]
@@ -537,12 +669,129 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 )
             ]
 
+    elif name == "retrieve_answer":
+        # Interview Coach: retrieve context for a question
+        if not retrieval_engine:
+            return [
+                TextContent(
+                    type="text",
+                    text="Interview Coach not configured. Set up knowledge base in ~/.interview_coach/",
+                )
+            ]
+
+        question = arguments.get("question", "")
+        if not question:
+            return [TextContent(type="text", text="Error: No question provided")]
+
+        try:
+            result = retrieval_engine.retrieve_for_question(question)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        except Exception as e:
+            logger.error(f"Error retrieving answer: {e}")
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+    elif name == "list_knowledge_bases":
+        # List available KB profiles
+        from config import load_kb_config
+        config = load_kb_config()
+
+        if not config:
+            return [TextContent(type="text", text="No knowledge base configuration found")]
+
+        active = config.get("active_profile", "unknown")
+        profiles = config.get("profiles", {})
+
+        text = f"Active Profile: {active}\n\nAvailable Profiles:\n"
+        for name, info in profiles.items():
+            text += f"  - {name}: {info.get('name', 'N/A')}\n"
+
+        return [TextContent(type="text", text=text)]
+
+    elif name == "switch_knowledge_base":
+        # Switch to different KB profile
+        global retrieval_engine, current_kb_profile
+        from config import load_kb_config
+
+        profile_name = arguments.get("profile_name", "")
+        if not profile_name:
+            return [TextContent(type="text", text="Error: No profile name provided")]
+
+        config = load_kb_config()
+        if not config or profile_name not in config.get("profiles", {}):
+            return [TextContent(type="text", text=f"Error: Profile '{profile_name}' not found")]
+
+        # Update active profile in config
+        config["active_profile"] = profile_name
+        from config import KB_CONFIG_FILE
+        try:
+            with open(KB_CONFIG_FILE, 'w') as f:
+                json.dump(config, f, indent=2)
+
+            # Reload interview coach
+            _init_interview_coach()
+            if retrieval_engine:
+                return [TextContent(type="text", text=f"Switched to profile '{profile_name}'")]
+            else:
+                return [TextContent(type="text", text=f"Profile switched but failed to load documents")]
+        except Exception as e:
+            logger.error(f"Error switching profile: {e}")
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+    elif name == "answer_interview_question":
+        # Submit Interview Coach answer and write to response file
+        if not transcript_archiver or not current_kb_profile:
+            return [TextContent(type="text", text="Interview Coach not configured")]
+
+        question = arguments.get("question", "")
+        answer = arguments.get("answer", "")
+        sources = arguments.get("sources", [])
+
+        if not question or not answer:
+            return [TextContent(type="text", text="Error: question and answer required")]
+
+        try:
+            # Write response file for voice app to read
+            response_file = Path("generated_code") / ".interview_coach_response"
+            response_data = {
+                "question": question,
+                "answer": answer,
+                "sources": sources,
+                "timestamp": datetime.now().isoformat()
+            }
+            response_file.write_text(json.dumps(response_data, indent=2))
+
+            # Auto-archive the Q&A pair
+            success, msg = transcript_archiver.archive_session(question, answer, sources, current_kb_profile["name"])
+
+            return [TextContent(type="text", text=f"Answer submitted and archived. {msg}")]
+        except Exception as e:
+            logger.error(f"Error submitting interview answer: {e}")
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+    elif name == "archive_interview_session":
+        # Archive interview session
+        if not transcript_archiver or not current_kb_profile:
+            return [TextContent(type="text", text="Interview Coach not configured")]
+
+        question = arguments.get("question", "")
+        answer = arguments.get("answer", "")
+        sources = arguments.get("sources", [])
+
+        if not question or not answer:
+            return [TextContent(type="text", text="Error: question and answer required")]
+
+        success, msg = transcript_archiver.archive_session(question, answer, sources, current_kb_profile["name"])
+        return [TextContent(type="text", text=msg)]
+
     else:
         raise ValueError(f"Unknown tool: {name}")
 
 
 async def main():
     """Run the MCP server"""
+    # Initialize Interview Coach at startup
+    _init_interview_coach()
+
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,

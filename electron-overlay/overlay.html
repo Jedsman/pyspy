@@ -817,6 +817,31 @@
             border-color: rgba(33, 150, 243, 0.7);
         }
 
+        .transcript-ask-coach-btn {
+            background: rgba(255, 152, 0, 0.3);
+            border: 1px solid rgba(255, 152, 0, 0.5);
+            color: #ffffff;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .transcript-ask-coach-btn:hover {
+            background: rgba(255, 152, 0, 0.5);
+        }
+
+        .transcript-ask-coach-btn.loading {
+            background: rgba(33, 150, 243, 0.3);
+            border-color: rgba(33, 150, 243, 0.5);
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
         .transcript-empty {
             display: flex;
             align-items: center;
@@ -1400,6 +1425,10 @@
                     else if (data.type === 'coach_suggestion') {
                         displayCoachSuggestion(data.question, data.suggestions, data.status);
                     }
+                    // Handle Interview Coach response
+                    else if (data.type === 'interview_coach_response') {
+                        displayInterviewCoachResponse(data.question, data.answer, data.sources);
+                    }
                     // Handle file updates
                     else if (data.filename && data.content !== undefined) {
                         updateFile(data.filename, data.content, data.language || 'text');
@@ -1679,6 +1708,40 @@
             }
         }
 
+        function displayInterviewCoachResponse(question, answer, sources = []) {
+            // Display Interview Coach answer in overlay
+            tabContainer.innerHTML = `
+                <div style="padding: 10px; width: 100%; background: rgba(255, 152, 0, 0.2); border: 1px solid rgba(255, 152, 0, 0.4); border-radius: 4px;">
+                    <div style="font-size: 11px; color: rgba(255, 255, 255, 0.7); margin-bottom: 5px;">🎯 Question:</div>
+                    <div style="font-size: 12px; color: #ffffff; font-weight: 500;">${escapeHtml(question)}</div>
+                </div>
+            `;
+
+            let sourcesHtml = '';
+            if (sources && sources.length > 0) {
+                sourcesHtml = `
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                        <div style="font-size: 10px; color: rgba(255, 255, 255, 0.6); margin-bottom: 5px;">📚 Sources:</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                            ${sources.map(src => `<span style="background: rgba(33, 150, 243, 0.2); padding: 2px 6px; border-radius: 2px; font-size: 9px; color: rgba(255, 255, 255, 0.8);">${escapeHtml(src)}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            codeContainer.innerHTML = `
+                <div style="padding: 20px;">
+                    <div style="font-size: 14px; color: rgba(255, 255, 255, 0.8); margin-bottom: 15px; font-weight: 500;">
+                        🎤 Claude's Answer:
+                    </div>
+                    <div style="font-size: 13px; color: #ffffff; line-height: 1.6;">
+                        ${escapeHtml(answer)}
+                    </div>
+                    ${sourcesHtml}
+                </div>
+            `;
+        }
+
         function addTranscriptSegment(speaker, text, timestamp) {
             // Remove empty state if present
             const emptyState = transcriptContent.querySelector('.transcript-empty');
@@ -1706,6 +1769,9 @@
                     </label>
                     <button class="transcript-copy-btn" onclick="copyTranscript(this, '${escapeHtml(text).replace(/'/g, "\\'")}')">
                         📋 Copy
+                    </button>
+                    <button class="transcript-ask-coach-btn" onclick="askCoach('${segmentId}')" title="Ask Interview Coach for help">
+                        🎯 Ask Coach
                     </button>
                 </div>
             `;
@@ -1747,6 +1813,56 @@
         function clearTranscript() {
             transcriptSegments = [];
             transcriptContent.innerHTML = '<div class="transcript-empty">No segments captured yet...</div>';
+        }
+
+        function askCoach(segmentId) {
+            // Get all checked segments or the clicked one
+            const checkboxes = document.querySelectorAll('.transcript-checkbox:checked');
+            let selectedSegmentIds = [];
+
+            if (checkboxes.length > 0) {
+                // Use selected segments
+                checkboxes.forEach(checkbox => {
+                    selectedSegmentIds.push(checkbox.dataset.segmentId);
+                });
+            } else {
+                // Use clicked segment only
+                selectedSegmentIds = [segmentId];
+            }
+
+            // Find corresponding segment texts in chronological order
+            const selectedSegments = transcriptSegments.filter(seg =>
+                selectedSegmentIds.includes(seg.id)
+            );
+
+            if (selectedSegments.length === 0) return;
+
+            // Combine segment texts in order (oldest first)
+            const combinedText = selectedSegments.map(seg => seg.text).join(' ');
+
+            // Find the button and set loading state
+            const button = event.target;
+            button.classList.add('loading');
+            button.innerHTML = '⏳ Waiting...';
+
+            // Send to voice app via command file
+            const query = {
+                segments: selectedSegments.map(seg => seg.text),
+                combined_text: combinedText,
+                timestamp: new Date().toISOString()
+            };
+
+            // Send via WebSocket to voice app
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'interview_coach_query',
+                    data: query
+                }));
+            } else {
+                console.error('WebSocket not connected');
+                button.classList.remove('loading');
+                button.innerHTML = '🎯 Ask Coach';
+            }
         }
 
         function updateLiveBuffer(buffer) {

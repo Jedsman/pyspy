@@ -1,0 +1,423 @@
+# Interview Coach Integration Plan
+## Integrating Interview Coach as a Module in Existing MCP Server
+
+### Overview
+Add Interview Coach functionality to the existing `voice-to-code` MCP server without creating a separate service. The Interview Coach module will:
+- Load domain-specific documents (PDFs, text files)
+- Maintain a curated career history
+- Support runtime knowledge base swapping
+- Retrieve relevant context via BM25 search
+- Track metadata about retrieved sources
+
+### Key Architecture Decisions
+
+1. **Single MCP Server**: All functionality in existing `mcp_server.py`
+2. **Local Knowledge Base**: Separate from shared drive (user-controlled location via config)
+3. **Runtime Knowledge Base Swapping**: Load different KB profiles at runtime
+4. **Source Tracking**: Return metadata about which documents/experience informed answers
+
+---
+
+## Implementation Plan
+
+### Phase 1: Configuration & Knowledge Base Infrastructure
+
+**Files to Create/Modify:**
+
+1. **config.py** - Extend to support Interview Coach
+   - Add `INTERVIEW_COACH_BASE_PATH` (local directory, separate from SHARED_DRIVE_PATH)
+   - Add `KNOWLEDGE_BASE_CONFIG_FILE` pointing to a JSON config
+   - Add methods to load/validate knowledge base configuration
+   - Make KB paths configurable via environment variables
+
+2. **knowledge_base_config.json** (NEW)
+   - Located in `~/.interview_coach/` or user-specified path
+   - Format:
+     ```json
+     {
+       "active_profile": "default",
+       "profiles": {
+         "default": {
+           "name": "Default Interview Prep",
+           "documents_path": "/path/to/documents",
+           "career_history_file": "/path/to/career_history.json",
+           "domain_context_file": "/path/to/domain_context.txt"
+         },
+         "company_x": {
+           "name": "Company X Preparation",
+           "documents_path": "/path/to/company_x_docs",
+           "career_history_file": "/path/to/career_history_company_x.json",
+           "domain_context_file": "/path/to/domain_context_company_x.txt"
+         }
+       }
+     }
+     ```
+
+3. **interview_coach/config.py** (NEW)
+   - Helper functions for KB profile management
+   - Validation that paths exist and are readable
+   - Methods to switch profiles at runtime
+
+**Success Criteria:**
+- Config loads successfully from environment/file
+- Multiple KB profiles can be defined
+- Active profile is retrievable
+- Invalid paths/profiles fail gracefully with clear errors
+
+---
+
+### Phase 2: Interview Coach Core Modules
+
+**Files to Create:**
+
+1. **interview_coach/document_loader.py** (NEW)
+   - Class: `DocumentLoader`
+   - Load PDFs (using pdfplumber if available, fallback to simple text extraction)
+   - Load .txt and .md files
+   - Parse career_history.json with validation
+   - Parse optional domain_context.txt
+   - Chunk documents (500-token chunks, 100-token overlap)
+   - Return: List of Document objects with metadata (source, chunk_id, page)
+   - Error handling for malformed files, encoding issues
+
+2. **interview_coach/career_context.py** (NEW)
+   - Class: `CareerContext`
+   - Load and validate career_history.json structure
+   - Provide helper methods:
+     - `get_by_skill(skill_name)` → relevant experience
+     - `get_by_company(company_name)` → relevant roles/achievements
+     - `get_summary()` → brief career overview
+     - `get_all()` → full career data
+   - In-memory caching at server startup
+   - Support partial matching (fuzzy search on skills/companies)
+
+3. **interview_coach/bm25_index.py** (NEW)
+   - Class: `BM25Index`
+   - Build BM25 index from Document list
+   - Implement `search(query: str, k: int = 5)` method:
+     - Tokenize/lowercase/remove stopwords
+     - Score documents
+     - Return top-k with scores
+     - Execution time: <5ms
+   - Optional query expansion (e.g., "ML" → "machine learning")
+   - Handle empty queries gracefully
+
+4. **interview_coach/retrieval_engine.py** (NEW)
+   - Class: `RetrievalEngine`
+   - Constructor takes: documents, career_context, bm25_index
+   - Method: `retrieve_for_question(question: str, use_career_context: bool = True)`
+     - Extract keywords from question
+     - BM25 search → top documents
+     - Match keywords to career context
+     - Return structured result with metadata
+   - Result format:
+     ```python
+     {
+       "question": str,
+       "documents": [
+         {
+           "content": str,
+           "source": str,
+           "page": int,
+           "chunk_id": str,
+           "score": float,
+           "profile": str  # which KB profile this came from
+         }
+       ],
+       "career_context": {
+         "relevant_roles": [],
+         "relevant_skills": [],
+         "relevant_achievements": []
+       },
+       "metadata": {
+         "search_time_ms": float,
+         "profile_used": str,
+         "document_count": int
+       }
+     }
+     ```
+
+5. **interview_coach/__init__.py** (NEW)
+   - Export main classes for easy importing
+
+**Success Criteria:**
+- Documents load and chunk correctly
+- Career history parses and validates
+- BM25 search is fast (<5ms)
+- Retrieval returns structured data with sources
+- Profile switching works without errors
+
+---
+
+### Phase 3: MCP Server Integration
+
+**Files to Modify:**
+
+1. **mcp_server.py**
+   - Import Interview Coach modules
+   - At server startup:
+     - Load active KB profile
+     - Initialize DocumentLoader, CareerContext, BM25Index, RetrievalEngine
+     - Log successful initialization or errors
+   - Add to `handle_list_tools()`:
+     ```python
+     Tool(
+       name="retrieve_answer",
+       description="Retrieve relevant context for an interview question from domain documents and career history",
+       inputSchema={...}
+     ),
+     Tool(
+       name="list_knowledge_bases",
+       description="List available KB profiles and currently active one",
+       inputSchema={...}
+     ),
+     Tool(
+       name="switch_knowledge_base",
+       description="Switch to a different KB profile (e.g., for different company interview prep)",
+       inputSchema={...}
+     ),
+     ```
+   - Add handlers in `handle_call_tool()`:
+     - `retrieve_answer`: Call retrieval_engine, return structured response
+     - `list_knowledge_bases`: Return list of profiles + active one
+     - `switch_knowledge_base`: Reload KB from different profile, confirm success
+
+2. **config.py**
+   - Add INTERVIEW_COACH_BASE_PATH
+   - Add KB config loading logic
+   - Ensure directories exist
+
+**Success Criteria:**
+- MCP server starts without errors (KB modules optional if KB not configured)
+- Tools appear in Claude Desktop
+- `retrieve_answer` returns valid structured responses
+- Profile switching works in real-time
+- Error handling is graceful (missing KB doesn't crash server)
+
+---
+
+### Phase 4: Transcript Learning & Feedback Loop
+
+**Overview:**
+Enable the system to learn from actual interview practice sessions by archiving transcripts and optionally using them as training data for future retrievals.
+
+**Files to Create/Modify:**
+
+1. **interview_coach/transcript_archiver.py** (NEW)
+   - Class: `TranscriptArchiver`
+   - Monitor captured transcripts from voice-to-code system
+   - Archive successful interview answers:
+     - Store: question asked, answer given, documents retrieved, timestamp
+     - Format: JSON with full context
+   - Provide methods:
+     - `archive_interview_session(question, answer, retrieved_sources, profile)` → saves to archive
+     - `get_archived_sessions(profile, limit=10)` → retrieves recent sessions
+     - `export_archive_as_training_data()` → formats for potential future fine-tuning
+   - Storage location: `~/.interview_coach/archive/` with profile subdirectories
+   - Auto-organize by date (YYYY/MM/DD folders)
+
+2. **interview_coach/learning_engine.py** (NEW - Optional Phase 4.2)
+   - Class: `LearningEngine`
+   - Analyze archived transcripts to improve future retrievals
+   - Features:
+     - Track which source documents were most helpful (usage scoring)
+     - Identify common question patterns in archive
+     - Suggest KB gaps (questions with low relevance scores)
+     - Recommend new documents to add based on frequent questions
+   - Methods:
+     - `analyze_archives()` → returns insights
+     - `get_suggested_improvements()` → actionable recommendations
+     - `score_document_usefulness()` → ranks docs by actual usage
+
+3. **mcp_server.py** (MODIFIED)
+   - Add tools for archive management:
+     - `archive_interview_answer`: Save Q&A + sources after successful practice
+     - `view_interview_archive`: Browse past sessions
+     - `get_learning_insights`: Get system recommendations
+   - After `retrieve_answer` returns, capture metadata for potential archival
+   - Log which sources Claude actually used in final answer
+
+**Workflow Example:**
+```
+1. User: "What's a good example of distributed systems from your experience?"
+2. Claude calls: retrieve_answer("What's a good example of distributed systems...")
+3. Interview Coach returns: 3 docs on distributed systems + Kubernetes experience at GSK
+4. Claude generates answer using these sources
+5. User calls: archive_interview_answer(question, answer, sources_used, profile)
+6. System stores in: ~/.interview_coach/archive/default/2025/12/03/session_1.json
+7. Over time, system learns which docs are most useful
+8. Learning engine suggests: "Add more docs on cloud infrastructure - frequent question"
+```
+
+**Archive Format Example:**
+```json
+{
+  "session_id": "2025-12-03-001",
+  "timestamp": "2025-12-03T14:30:00Z",
+  "profile": "default",
+  "question": "What's a good example of distributed systems from your experience?",
+  "answer": "During my time at GSK...",
+  "sources_used": [
+    {
+      "source": "kubernetes_guide.pdf",
+      "chunks": ["chunk_5_12", "chunk_5_13"],
+      "relevance_score": 0.87,
+      "usage": "primary_example"
+    },
+    {
+      "source": "career_history.json",
+      "career_fact": "Built multi-region deployment pipelines",
+      "usage": "supporting_experience"
+    }
+  ],
+  "quality_feedback": {
+    "user_rating": 8,  # optional 1-10 rating from user
+    "notes": "Good real example, could use more technical depth"
+  }
+}
+```
+
+**Success Criteria:**
+- Interview answers are archived with full context
+- Archive grows over time with practice sessions
+- Learning engine identifies KB gaps and improvement areas
+- System remains performant (archiving is async/fire-and-forget)
+- Archive useful for future prep without modifying KB
+
+---
+
+### Phase 5: Error Handling & Resilience
+
+**Implementation:**
+- If KB not configured, tools should gracefully return helpful error messages
+- If documents can't load, log error but don't crash server
+- If profile switch fails, keep current profile active
+- If archiving fails, log error but don't interrupt retrieval
+- Add try-catch blocks around all KB operations in mcp_server.py
+- Log all KB operations to mcp_server.log
+
+**Success Criteria:**
+- Missing KB doesn't prevent MCP server from starting
+- Tool calls with errors return helpful error messages
+- Server remains stable with invalid/missing data
+- Archive failures don't impact interview coaching
+
+---
+
+### Phase 5: Testing & Documentation
+
+**Test Cases:**
+- Load documents from sample PDFs
+- Parse career history JSON
+- BM25 search performance (<5ms)
+- Retrieval with real interview questions
+- Profile switching
+- Error cases (missing files, malformed JSON, etc.)
+
+**Documentation:**
+- Create README for Interview Coach module
+- Document KB config format
+- Provide example career_history.json template
+- Instructions for setting up first KB profile
+
+---
+
+## File Structure After Implementation
+
+```
+pyspy/
+├── config.py (MODIFIED - add KB config)
+├── mcp_server.py (MODIFIED - add interview coach tools)
+├── interview_coach/
+│   ├── __init__.py (NEW)
+│   ├── config.py (NEW - KB profile management)
+│   ├── document_loader.py (NEW)
+│   ├── career_context.py (NEW)
+│   ├── bm25_index.py (NEW)
+│   ├── retrieval_engine.py (NEW)
+│   ├── transcript_archiver.py (NEW - archive interview sessions)
+│   └── learning_engine.py (NEW - optional: analyze archives for insights)
+├── knowledge_base_config.json (NEW - template)
+├── .env (existing - add KB paths if needed)
+└── README_INTERVIEW_COACH.md (NEW)
+```
+
+User's Local Setup (Outside Repo):
+```
+~/.interview_coach/
+├── knowledge_base_config.json
+├── archive/                          # NEW - stores practice sessions
+│   ├── default/
+│   │   └── 2025/12/03/
+│   │       ├── session_1.json
+│   │       ├── session_2.json
+│   │       └── ...
+│   └── company_x/
+│       └── 2025/12/03/
+│           └── ...
+└── profiles/
+    ├── default/
+    │   ├── documents/
+    │   ├── career_history.json
+    │   └── domain_context.txt
+    └── company_x/
+        ├── documents/
+        ├── career_history.json
+        └── domain_context.txt
+```
+
+---
+
+## Implementation Order
+
+1. **Phase 1**: Update config.py and create KB config template
+2. **Phase 2**: Create interview_coach module with core functionality
+3. **Phase 3**: Integrate into mcp_server.py (add tools, startup logic)
+4. **Phase 4a**: Add transcript archiving & learning feedback loop
+4. **Phase 4b** (Optional): Add learning engine insights
+5. **Phase 5**: Error handling and robustness
+6. **Phase 6**: Testing and documentation
+
+---
+
+## Key Decisions Made
+
+1. **Separate Local Path**: KB lives in `~/.interview_coach/` (or env-configured), not in shared drive
+2. **Profile-Based Organization**: Multiple KB profiles for different interviews/companies
+3. **Graceful Degradation**: Missing KB doesn't crash server
+4. **Metadata Tracking**: Every retrieval includes source tracking for follow-ups
+5. **Runtime Switching**: Switch profiles without restarting server
+6. **Simple Search**: BM25 only (no embeddings) for fast <200ms responses on GTX 1070
+7. **Learning Loop**: Archive practice sessions to improve future preparations
+8. **Optional Enhancement**: Learning engine can suggest KB improvements based on actual usage patterns
+
+---
+
+## Success Criteria
+
+✓ Interview Coach module loads at server startup
+✓ Documents parse and index correctly
+✓ retrieve_answer tool returns relevant context (<200ms)
+✓ Profile switching works at runtime
+✓ Source metadata is tracked and returnable
+✓ Missing KB doesn't crash server
+✓ Interview sessions are archived with full context
+✓ Learning engine provides actionable KB improvement suggestions
+✓ System grows smarter over time with practice
+✓ Ready for real interview prep workflows
+
+
+
+MVP Scope (Token-Efficient)
+Core Only:
+✅ Config + KB profile loading (minimal)
+✅ Document loader + BM25 search (no fancy chunking)
+✅ Retrieval engine (basic keyword matching)
+✅ MCP tool integration (3 tools: retrieve_answer, list_kbs, switch_kb)
+✅ Basic transcript archiving (fire-and-forget JSON saves)
+Skip (for now):
+Learning engine (phase 4b) - save for later iteration
+Fancy error handling
+Career context matching (keep simple)
+Testing suite
+Extensive docs
